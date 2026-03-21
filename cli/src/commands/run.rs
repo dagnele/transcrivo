@@ -22,6 +22,9 @@ use crate::transport::{BackendWebSocketClient, WebSocketClientError, DEFAULT_REA
 use crate::util::shutdown::ShutdownController;
 use crate::util::whisper_log;
 
+const SESSION_EXPIRED_ERROR_CODE: &str = "session_expired";
+const SESSION_CLOSED_ERROR_CODE: &str = "session_closed";
+
 const LIVE_SILENCE_HOLD_MS: u64 = 750;
 const LIVE_SILENCE_MIN_RMS: f32 = 0.01;
 const TRANSCRIPTION_CHUNK_MS: u32 = 3_000;
@@ -224,9 +227,13 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
         shutdown_reason = Some("user_interrupt".to_string());
     }
 
-    let stop_message = session.create_session_stop(shutdown_reason)?;
-    if let Err(error) = client.send_message(&stop_message).await {
-        warn!(error = %error, "failed to send session.stop during cleanup");
+    if should_send_session_stop(shutdown_reason.as_deref()) {
+        let stop_message = session.create_session_stop(shutdown_reason)?;
+        if let Err(error) = client.send_message(&stop_message).await {
+            warn!(error = %error, "failed to send session.stop during cleanup");
+        }
+    } else {
+        info!(reason = ?shutdown_reason, "skipping session.stop because backend already closed the session");
     }
     match timeout(WS_CLOSE_TIMEOUT, client.close()).await {
         Ok(Ok(())) => {}
@@ -749,7 +756,11 @@ async fn poll_backend_messages(
         if matches!(inbound.state, crate::session::models::SessionState::Error) {
             shutdown.request();
             if let crate::session::manager::InboundPayload::Error(payload) = inbound.payload {
-                error!(code = ?payload.code, message = %payload.message, "backend session error");
+                if is_terminal_session_error_code(payload.code.as_deref()) {
+                    info!(code = ?payload.code, message = %payload.message, "backend closed session; shutting down cli");
+                } else {
+                    error!(code = ?payload.code, message = %payload.message, "backend session error");
+                }
                 bail!(payload.message);
             }
             bail!("backend returned invalid session.error payload");
@@ -824,7 +835,11 @@ fn transcription_preprocess_config() -> PreprocessConfig {
 }
 
 fn shutdown_reason_for_error(error: &anyhow::Error) -> String {
-    if error.downcast_ref::<crate::transport::BackendSessionError>().is_some() {
+    if let Some(session_error) = error.downcast_ref::<crate::transport::BackendSessionError>() {
+        if is_terminal_session_error_code(session_error.code.as_deref()) {
+            return "session_closed".to_string();
+        }
+
         return "backend_error".to_string();
     }
     if error.downcast_ref::<crate::audio::devices::DeviceDiscoveryError>().is_some() {
@@ -845,3 +860,40 @@ fn shutdown_reason_for_error(error: &anyhow::Error) -> String {
 
     "runtime_error".to_string()
 }
+
+fn should_send_session_stop(reason: Option<&str>) -> bool {
+    reason != Some("session_closed")
+}
+
+fn is_terminal_session_error_code(code: Option<&str>) -> bool {
+    matches!(code, Some(SESSION_EXPIRED_ERROR_CODE | SESSION_CLOSED_ERROR_CODE))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{should_send_session_stop, shutdown_reason_for_error};
+    use crate::transport::BackendSessionError;
+
+    #[test]
+    fn expired_backend_session_maps_to_session_closed_reason() {
+        let error = anyhow::Error::new(BackendSessionError::new(
+            "Session has expired.",
+            Some("session_expired".to_string()),
+        ));
+
+        assert_eq!(shutdown_reason_for_error(&error), "session_closed");
+        assert!(!should_send_session_stop(Some("session_closed")));
+    }
+
+    #[test]
+    fn generic_backend_session_error_remains_backend_error_reason() {
+        let error = anyhow::Error::new(BackendSessionError::new(
+            "invalid token",
+            Some("auth_failed".to_string()),
+        ));
+
+        assert_eq!(shutdown_reason_for_error(&error), "backend_error");
+        assert!(should_send_session_stop(Some("backend_error")));
+    }
+}
+

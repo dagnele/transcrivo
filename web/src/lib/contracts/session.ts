@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const sessionStatusValues = ["draft", "live", "ended", "failed"] as const;
+export const sessionStatusValues = ["draft", "live", "ended", "failed", "expired"] as const;
 
 export const sessionTypeValues = ["coding", "system_design"] as const;
 
@@ -66,6 +66,7 @@ export const sessionSchema = sessionBaseSchema
     createdAt: z.date(),
     startedAt: z.date().nullable(),
     endedAt: z.date().nullable(),
+    expiresAt: z.date().nullable(),
   })
   .superRefine(refineSessionLanguage);
 

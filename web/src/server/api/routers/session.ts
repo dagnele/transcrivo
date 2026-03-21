@@ -11,6 +11,7 @@ import {
   sessionSolutionEventSchema,
   sessionSolutionInputSchema,
   sessionSolutionSchema,
+  type SessionSolution as SessionSolutionContract,
 } from "@/lib/contracts/solution";
 import {
   createSessionInputSchema,
@@ -24,21 +25,35 @@ import {
   subscribeToSessionEvents,
   subscribeToSessionSolutionEvents,
 } from "@/server/api/session-events";
-import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db/client";
 import { sessionEvents, sessionSolutions, sessions } from "@/server/db/schema";
 import { generateSessionId } from "@/lib/ids";
-import { signSessionToken } from "@/server/token";
+import { CLI_TOKEN_LIFETIME_MS, signSessionToken } from "@/server/token";
+
+function normalizeSessionSolution(
+  solution: typeof sessionSolutions.$inferSelect,
+): SessionSolutionContract {
+  return sessionSolutionSchema.parse({
+    ...solution,
+    errorMessage: solution.errorMessage ?? null,
+    provider: solution.provider ?? null,
+    model: solution.model ?? null,
+    promptVersion: solution.promptVersion ?? null,
+    meta: solution.meta ?? null,
+  });
+}
 
 export const sessionRouter = createTRPCRouter({
-  create: publicProcedure
+  create: protectedProcedure
     .input(createSessionInputSchema)
     .output(sessionSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const [session] = await db
         .insert(sessions)
         .values({
           id: generateSessionId(),
+          userId: ctx.session.user.id,
           title: input.title,
           type: input.type,
           language: input.language,
@@ -49,14 +64,14 @@ export const sessionRouter = createTRPCRouter({
       return sessionSchema.parse(session);
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(updateSessionInputSchema)
     .output(sessionSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const [session] = await db
         .update(sessions)
         .set({ title: input.title, type: input.type, language: input.language })
-        .where(eq(sessions.id, input.sessionId))
+        .where(and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)))
         .returning();
 
       if (!session) {
@@ -69,12 +84,12 @@ export const sessionRouter = createTRPCRouter({
       return sessionSchema.parse(session);
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(sessionIdInputSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const [deleted] = await db
         .delete(sessions)
-        .where(eq(sessions.id, input.sessionId))
+        .where(and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)))
         .returning({ id: sessions.id });
 
       if (!deleted) {
@@ -87,11 +102,14 @@ export const sessionRouter = createTRPCRouter({
       return { success: true };
     }),
 
-  list: publicProcedure
+  list: protectedProcedure
     .input(listSessionsInputSchema)
     .output(paginatedSessionsSchema)
-    .query(async ({ input }) => {
-      const filters = [input.status ? eq(sessions.status, input.status) : undefined];
+    .query(async ({ ctx, input }) => {
+      const filters: Array<ReturnType<typeof eq> | ReturnType<typeof lt> | undefined> = [
+        eq(sessions.userId, ctx.session.user.id),
+        input.status ? eq(sessions.status, input.status) : undefined,
+      ];
 
       if (input.cursor) {
         filters.push(lt(sessions.createdAt, new Date(input.cursor)));
@@ -114,12 +132,12 @@ export const sessionRouter = createTRPCRouter({
       });
     }),
 
-  byId: publicProcedure
+  byId: protectedProcedure
     .input(sessionIdInputSchema)
     .output(sessionSchema)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const session = await db.query.sessions.findFirst({
-        where: eq(sessions.id, input.sessionId),
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
       });
 
       if (!session) {
@@ -132,22 +150,38 @@ export const sessionRouter = createTRPCRouter({
       return sessionSchema.parse(session);
     }),
 
-  solution: publicProcedure
+  solution: protectedProcedure
     .input(sessionSolutionInputSchema)
     .output(sessionSolutionSchema.nullable())
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const ownedSession = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!ownedSession) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found." });
+      }
+
       const solution = await db.query.sessionSolutions.findFirst({
         where: eq(sessionSolutions.sessionId, input.sessionId),
         orderBy: [desc(sessionSolutions.version), desc(sessionSolutions.createdAt)],
       });
 
-      return solution ? sessionSolutionSchema.parse(solution) : null;
+      return solution ? normalizeSessionSolution(solution) : null;
     }),
 
-  solutionHistory: publicProcedure
+  solutionHistory: protectedProcedure
     .input(sessionSolutionHistoryInputSchema)
     .output(sessionSolutionSchema.array())
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const ownedSession = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!ownedSession) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found." });
+      }
+
       const items = await db
         .select()
         .from(sessionSolutions)
@@ -161,12 +195,20 @@ export const sessionRouter = createTRPCRouter({
         )
         .orderBy(asc(sessionSolutions.version), asc(sessionSolutions.createdAt));
 
-      return sessionSolutionSchema.array().parse(items);
+      return items.map(normalizeSessionSolution);
     }),
 
-  solutionSubscribe: publicProcedure
+  solutionSubscribe: protectedProcedure
     .input(sessionSolutionHistoryInputSchema)
-    .subscription(async function* ({ input, signal }) {
+    .subscription(async function* ({ ctx, input, signal }) {
+      const ownedSession = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!ownedSession) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found." });
+      }
+
       const missedSolutions = await db
         .select()
         .from(sessionSolutions)
@@ -216,10 +258,18 @@ export const sessionRouter = createTRPCRouter({
       }
     }),
 
-  history: publicProcedure
+  history: protectedProcedure
     .input(sessionHistoryInputSchema)
     .output(sessionEventSchema.array())
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const ownedSession = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!ownedSession) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found." });
+      }
+
       const items = await db
         .select()
         .from(sessionEvents)
@@ -236,9 +286,17 @@ export const sessionRouter = createTRPCRouter({
       return sessionEventSchema.array().parse(items);
     }),
 
-  subscribe: publicProcedure
+  subscribe: protectedProcedure
     .input(sessionHistoryInputSchema)
-    .subscription(async function* ({ input, signal }) {
+    .subscription(async function* ({ ctx, input, signal }) {
+      const ownedSession = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!ownedSession) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found." });
+      }
+
       const missedEvents = await db
         .select()
         .from(sessionEvents)
@@ -261,12 +319,17 @@ export const sessionRouter = createTRPCRouter({
       }
     }),
 
-  createToken: publicProcedure
+  createToken: protectedProcedure
     .input(sessionIdInputSchema)
-    .output(z.object({ token: z.string() }))
-    .mutation(async ({ input }) => {
+    .output(
+      z.object({
+        token: z.string(),
+        expiresAt: z.date(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
       const session = await db.query.sessions.findFirst({
-        where: eq(sessions.id, input.sessionId),
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
       });
 
       if (!session) {
@@ -276,10 +339,10 @@ export const sessionRouter = createTRPCRouter({
         });
       }
 
-      // userId is null until the user model is implemented
-      const token = await signSessionToken(session.id, null);
+      const expiresAt = new Date(Date.now() + CLI_TOKEN_LIFETIME_MS);
+      const token = await signSessionToken(session.id, expiresAt, ctx.session.user.id);
 
-      return { token };
+      return { token, expiresAt };
     }),
 
 });

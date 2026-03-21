@@ -44,8 +44,20 @@ pub enum WebSocketClientError {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct BackendSessionError(pub String);
+#[error("{message}")]
+pub struct BackendSessionError {
+    pub message: String,
+    pub code: Option<String>,
+}
+
+impl BackendSessionError {
+    pub fn new(message: impl Into<String>, code: Option<String>) -> Self {
+        Self {
+            message: message.into(),
+            code,
+        }
+    }
+}
 
 pub struct BackendWebSocketClient {
     backend_url: String,
@@ -199,8 +211,14 @@ impl BackendWebSocketClient {
                         .and_then(|value| value.as_str())
                         .unwrap_or("unknown backend error")
                         .to_string();
-                    return Err(WebSocketClientError::from(BackendSessionError(
+                    let backend_code = message
+                        .payload
+                        .get("code")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_owned);
+                    return Err(WebSocketClientError::from(BackendSessionError::new(
                         backend_message,
+                        backend_code,
                     )));
                 }
                 if message.message_type == MessageType::SessionReady {

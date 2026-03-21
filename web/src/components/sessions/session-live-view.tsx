@@ -24,12 +24,14 @@ import {
 } from "@/lib/contracts/solution";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
 import {
+  formatTimestamp,
   formatTimecode,
   getConnectionLabel,
   getStatusVariant,
 } from "@/lib/session-ui";
 import { getSessionLanguageLabel, getSessionTypeLabel } from "@/lib/session-config";
 import { useTRPC } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 
 type TranscriptItem = {
   id: string;
@@ -51,9 +53,13 @@ type SessionLiveViewProps = {
 
 type SessionState = {
   status: SessionStatus;
+  startedAt: Date | null;
+  expiresAt: Date | null;
   lastSequence: number;
   transcript: TranscriptItem[];
 };
+
+const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
 
 type SolutionState = {
   status: "idle" | "generating" | "draft" | "ready" | "error";
@@ -67,10 +73,29 @@ function applyEvent(state: SessionState, event: SessionEvent): SessionState {
   }
 
   if (event.type === "session.started") {
-    return { ...state, status: "live", lastSequence: event.sequence };
+    return {
+      ...state,
+      status: "live",
+      startedAt: state.startedAt ?? event.createdAt,
+      expiresAt:
+        state.expiresAt ?? new Date(event.createdAt.getTime() + LOCAL_SESSION_DURATION_MS),
+      lastSequence: event.sequence,
+    };
   }
 
   if (event.type === "session.ended") {
+    const reason =
+      typeof event.payload.reason === "string" ? event.payload.reason : null;
+
+    if (reason === "session-expired") {
+      return {
+        ...state,
+        status: "expired",
+        expiresAt: state.expiresAt ?? event.createdAt,
+        lastSequence: event.sequence,
+      };
+    }
+
     return { ...state, status: "ended", lastSequence: event.sequence };
   }
 
@@ -148,7 +173,13 @@ function buildInitialState(
 ): SessionState {
   return history.reduce<SessionState>(
     (state, event) => applyEvent(state, event),
-    { status: session.status, lastSequence: 0, transcript: [] },
+    {
+      status: session.status,
+      startedAt: session.startedAt,
+      expiresAt: session.expiresAt,
+      lastSequence: 0,
+      transcript: [],
+    },
   );
 }
 
@@ -243,11 +274,11 @@ function applySolutionEvent(
     content: event.payload.content,
     version: event.payload.version,
     sourceEventSequence: event.payload.sourceEventSequence,
-    errorMessage: undefined,
-    provider: event.payload.provider,
-    model: event.payload.model,
-    promptVersion: event.payload.promptVersion,
-    meta: event.payload.meta,
+    errorMessage: null,
+    provider: event.payload.provider ?? null,
+    model: event.payload.model ?? null,
+    promptVersion: event.payload.promptVersion ?? null,
+    meta: event.payload.meta ?? null,
     createdAt: event.payload.createdAt,
     updatedAt: event.payload.createdAt,
   };
@@ -371,6 +402,23 @@ export function SessionLiveView({
           </Button>
         </div>
       </header>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/40 px-6 py-2 text-[11px] text-muted-foreground/80">
+        <span>Created {formatTimestamp(session.createdAt) ?? "-"}</span>
+        {sessionState.startedAt ? (
+          <span>Started {formatTimestamp(sessionState.startedAt) ?? "-"}</span>
+        ) : (
+          <span>Starts when the CLI sends `session.start`</span>
+        )}
+        {sessionState.expiresAt ? (
+          <span>
+            {sessionState.status === "expired" ? "Expired" : "Expires"}{" "}
+            {formatTimestamp(sessionState.expiresAt) ?? "-"}
+          </span>
+        ) : (
+          <span>Expires 1 hour after the session starts</span>
+        )}
+      </div>
 
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         {/* Transcript */}

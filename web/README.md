@@ -89,6 +89,9 @@ The project loads environment variables from Doppler.
 Expected secret names include:
 
 - `DATABASE_URL`
+- `BETTER_AUTH_URL`
+- `AUTH_EMAIL_FROM`
+- `RESEND_API_KEY` (optional in local dev, required for real email delivery)
 
 Recommended local flow:
 
@@ -96,6 +99,8 @@ Recommended local flow:
 doppler setup
 bun dev
 ```
+
+When email verification is enabled, local development falls back to logging OTP codes to the server console if `RESEND_API_KEY` is not set.
 
 ## Current routes
 

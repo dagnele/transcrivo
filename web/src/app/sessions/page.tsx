@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 
 import { getServerTRPCCaller } from "@/server/api/caller";
+import { getRequiredSession } from "@/server/auth-session";
 
 export default async function SessionsPage() {
+  await getRequiredSession();
+
   try {
     const caller = await getServerTRPCCaller();
     const data = await caller.session.list({ limit: 1 });

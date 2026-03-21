@@ -1,4 +1,5 @@
 import { SessionsShell } from "@/components/sessions/sessions-shell";
+import { getRequiredSession } from "@/server/auth-session";
 import { getServerTRPCCaller } from "@/server/api/caller";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +9,8 @@ export default async function SessionsLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  await getRequiredSession();
+
   let sessions: Awaited<
     ReturnType<(Awaited<ReturnType<typeof getServerTRPCCaller>>)["session"]["list"]>
   > | null = null;

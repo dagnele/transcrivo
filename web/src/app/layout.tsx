@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, Manrope } from "next/font/google";
 
+import { AuthProvider } from "@/components/providers/auth-provider";
 import { TRPCReactProvider } from "@/components/providers/trpc-provider";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import "./globals.css";
@@ -37,7 +39,12 @@ export default function RootLayout({
     >
       <body className="h-full bg-background text-foreground">
         <TRPCReactProvider>
-          <TooltipProvider>{children}</TooltipProvider>
+          <AuthProvider>
+            <TooltipProvider>
+              {children}
+              <Toaster />
+            </TooltipProvider>
+          </AuthProvider>
         </TRPCReactProvider>
       </body>
     </html>

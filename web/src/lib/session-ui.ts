@@ -38,6 +38,8 @@ export function getStatusVariant(status: SessionStatus) {
   switch (status) {
     case "live":
       return "default" as const;
+    case "expired":
+      return "destructive" as const;
     case "ended":
       return "secondary" as const;
     case "failed":

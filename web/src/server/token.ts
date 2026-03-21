@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const CLI_TOKEN_LIFETIME_MS = 90 * 60 * 1000;
+
 const tokenPayloadSchema = z.object({
   sid: z.string().min(1),
   uid: z.string().nullable(),
@@ -15,16 +17,6 @@ function getSecret(): string {
     throw new Error("TOKEN_SECRET environment variable is required");
   }
   return secret;
-}
-
-function getExpirySeconds(): number {
-  const raw = process.env.TOKEN_EXPIRY_SECONDS;
-  if (!raw) return 86400; // default 24 hours
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("TOKEN_EXPIRY_SECONDS must be a positive number");
-  }
-  return parsed;
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -82,11 +74,16 @@ async function hmacVerify(
 
 export async function signSessionToken(
   sessionId: string,
+  expiresAt: Date,
   userId: string | null = null,
 ): Promise<string> {
   const secret = getSecret();
-  const expirySeconds = getExpirySeconds();
   const now = Math.floor(Date.now() / 1000);
+  const expiresAtSeconds = Math.floor(expiresAt.getTime() / 1000);
+
+  if (expiresAtSeconds <= now) {
+    throw new Error("Token expiration must be in the future");
+  }
 
   const header = base64url(encoder.encode(JSON.stringify({ alg: "HS256", typ: "JWT" })));
   const payload = base64url(
@@ -95,7 +92,7 @@ export async function signSessionToken(
         sid: sessionId,
         uid: userId,
         iat: now,
-        exp: now + expirySeconds,
+        exp: expiresAtSeconds,
       }),
     ),
   );

@@ -2,9 +2,6 @@ import { z } from "zod";
 
 import { sessionIdSchema } from "@/lib/contracts/session";
 
-const nullishOptional = <T extends z.ZodTypeAny>(schema: T) =>
-  z.preprocess((value) => (value === null ? undefined : value), schema.optional());
-
 export const sessionSolutionStatusValues = ["draft", "ready", "error"] as const;
 
 export const sessionSolutionFormatValues = ["markdown"] as const;
@@ -24,9 +21,7 @@ export const sessionSolutionFormatSchema = z.enum(sessionSolutionFormatValues);
 
 export const sessionSolutionEventTypeSchema = z.enum(sessionSolutionEventTypeValues);
 
-export const sessionSolutionMetadataSchema = nullishOptional(
-  z.record(z.string(), z.unknown())
-);
+export const sessionSolutionMetadataSchema = z.record(z.string(), z.unknown()).nullable();
 
 export const sessionSolutionSchema = z.object({
   id: sessionSolutionIdSchema,
@@ -36,10 +31,10 @@ export const sessionSolutionSchema = z.object({
   content: z.string(),
   version: z.number().int().positive(),
   sourceEventSequence: z.number().int().nonnegative(),
-  errorMessage: nullishOptional(z.string().min(1)),
-  provider: nullishOptional(z.string().trim().min(1).max(128)),
-  model: nullishOptional(z.string().trim().min(1).max(256)),
-  promptVersion: nullishOptional(z.string().trim().min(1).max(128)),
+  errorMessage: z.string().min(1).nullable(),
+  provider: z.string().trim().min(1).max(128).nullable(),
+  model: z.string().trim().min(1).max(256).nullable(),
+  promptVersion: z.string().trim().min(1).max(128).nullable(),
   meta: sessionSolutionMetadataSchema,
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -52,9 +47,9 @@ const solutionPayloadBaseSchema = z.object({
   format: sessionSolutionFormatSchema,
   sourceEventSequence: z.number().int().nonnegative(),
   createdAt: z.date(),
-  provider: nullishOptional(z.string().trim().min(1).max(128)),
-  model: nullishOptional(z.string().trim().min(1).max(256)),
-  promptVersion: nullishOptional(z.string().trim().min(1).max(128)),
+  provider: z.string().trim().min(1).max(128).nullable(),
+  model: z.string().trim().min(1).max(256).nullable(),
+  promptVersion: z.string().trim().min(1).max(128).nullable(),
   meta: sessionSolutionMetadataSchema,
 });
 

@@ -132,3 +132,118 @@ async fn run_live_session_returns_error_when_one_source_ends_unexpectedly() {
     let _ = client.close().await;
     server.await.expect("join server");
 }
+
+#[tokio::test]
+async fn run_live_session_stops_when_backend_expires_session() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept connection");
+        let mut websocket = accept_async(stream).await.expect("accept websocket");
+
+        let start = websocket
+            .next()
+            .await
+            .expect("session.start frame")
+            .expect("session.start message")
+            .into_text()
+            .expect("session.start text");
+        let decoded: serde_json::Value = serde_json::from_str(&start).expect("decode start");
+        assert_eq!(decoded["type"], "session.start");
+
+        websocket
+            .send(
+                MessageEnvelope::new(
+                    MessageType::SessionReady,
+                    1,
+                    json!({ "status": "ok" }).as_object().unwrap().clone(),
+                )
+                .expect("ready envelope")
+                .to_json()
+                .expect("ready json")
+                .into(),
+            )
+            .await
+            .expect("send ready");
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        websocket
+            .send(
+                MessageEnvelope::new(
+                    MessageType::SessionError,
+                    2,
+                    json!({
+                        "message": "Session has expired.",
+                        "code": "session_expired"
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                )
+                .expect("error envelope")
+                .to_json()
+                .expect("error json")
+                .into(),
+            )
+            .await
+            .expect("send error");
+
+        while let Some(message) = websocket.next().await {
+            match message {
+                Ok(Message::Close(_)) => break,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+    });
+
+    let mut client = BackendWebSocketClient::new(
+        format!("ws://127.0.0.1:{}/ws", address.port()),
+        "test-token",
+    );
+    client.connect().await.expect("connect client");
+
+    let mut session = SessionManager::new(Some("linux".to_string()));
+    let start_message = session
+        .create_session_start(Some("mic-1".to_string()), Some("sys-1".to_string()))
+        .expect("start message");
+    client
+        .send_message(&start_message)
+        .await
+        .expect("send start");
+    let ready = client
+        .wait_for_session_ready(Duration::from_secs(1).as_secs_f64())
+        .await
+        .expect("wait for ready");
+    session
+        .handle_inbound_message(&ready)
+        .expect("ready handled");
+
+    let live_script = "import sys,time; sys.stdout.buffer.write(bytes(range(16))); sys.stdout.flush(); time.sleep(5)";
+    let source_captures = SourceCaptures::new(
+        python_capture_worker(CaptureSource::Mic, "mic-1", "Mic", live_script),
+        python_capture_worker(CaptureSource::System, "sys-1", "System", live_script),
+    );
+
+    let shutdown = ShutdownController::new();
+    let result = run_live_session_with_adapter_factory(
+        &mut session,
+        &mut client,
+        source_captures,
+        &shutdown,
+        TranscriptionConfig::default(),
+        adapter_factory,
+    )
+    .await;
+
+    let error = result.expect_err("expired session should stop the live session");
+    assert_eq!(error.to_string(), "Session has expired.");
+    assert!(shutdown.is_requested(), "shutdown should be requested");
+
+    let _ = client.close().await;
+    server.await.expect("join server");
+}

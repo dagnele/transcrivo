@@ -18,6 +18,9 @@ import {
   sessionStatusValues,
   sessionTypeValues,
 } from "@/lib/contracts/session";
+import { account, session, user, verification } from "@/server/db/auth-schema";
+
+export { account, session, user, verification };
 
 export const sessionStatuses = sessionStatusValues;
 
@@ -35,6 +38,9 @@ export const sessions = pgTable(
   "sessions",
   {
     id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     type: text("type", { enum: sessionTypes }).notNull().default("coding"),
     language: text("language", { enum: sessionLanguages }),
@@ -53,8 +59,16 @@ export const sessions = pgTable(
       withTimezone: true,
       mode: "date",
     }),
+    expiresAt: timestamp("expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
   },
   (table) => ({
+    userCreatedAtIdx: index("sessions_user_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
     statusCreatedAtIdx: index("sessions_status_created_at_idx").on(
       table.status,
       table.createdAt,

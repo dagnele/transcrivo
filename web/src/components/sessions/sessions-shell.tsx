@@ -63,6 +63,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   formatCompactTimestamp,
+  formatTimestamp,
   getStatusVariant,
 } from "@/lib/session-ui";
 
@@ -415,6 +416,15 @@ export function SessionsShell({
                           <span>
                             {formatCompactTimestamp(session.createdAt) ?? ""}
                           </span>
+                          {session.expiresAt ? (
+                            <>
+                              <span className="text-border">&middot;</span>
+                              <span title={formatTimestamp(session.expiresAt) ?? undefined}>
+                                {session.status === "expired" ? "expired" : "expires"}{" "}
+                                {formatCompactTimestamp(session.expiresAt) ?? ""}
+                              </span>
+                            </>
+                          ) : null}
                         </div>
                       </div>
                     </Link>

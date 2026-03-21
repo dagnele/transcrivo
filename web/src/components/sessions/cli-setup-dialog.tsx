@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatTimestamp } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
 
 type CliSetupDialogProps = {
@@ -62,12 +63,14 @@ export function CliSetupDialog({
 }: CliSetupDialogProps) {
   const trpc = useTRPC();
   const [token, setToken] = useState<string | null>(null);
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<Date | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
   const tokenMutation = useMutation(
     trpc.session.createToken.mutationOptions({
       onSuccess(data) {
         setToken(data.token);
+        setTokenExpiresAt(data.expiresAt);
         setTokenError(null);
       },
       onError(error) {
@@ -94,6 +97,7 @@ export function CliSetupDialog({
       onOpenChange={(next) => {
         if (!next) {
           setToken(null);
+          setTokenExpiresAt(null);
           setTokenError(null);
         }
         onOpenChange(next);
@@ -104,7 +108,9 @@ export function CliSetupDialog({
           <DialogTitle>Connect via CLI</DialogTitle>
           <DialogDescription>
             Generate a token and run the command to start streaming audio to
-            this session.
+            this session. Tokens stay valid for 1 hour 30 minutes, and the
+            session expiration clock starts only after the CLI sends
+            <span className="mx-1 font-mono text-[11px]">session.start</span>.
           </DialogDescription>
         </DialogHeader>
 
@@ -130,6 +136,17 @@ export function CliSetupDialog({
             {token ? (
               <>
                 <CopyBlock value={token} masked />
+                <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                  <p>Token lifetime: 1 hour 30 minutes.</p>
+                  <p>
+                    Token expires at {formatTimestamp(tokenExpiresAt) ?? "-"}.
+                  </p>
+                  <p>
+                    The session itself expires 1 hour after the CLI starts it.
+                    Once expired, the session is closed and will not accept more
+                    CLI connections.
+                  </p>
+                </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
@@ -141,10 +158,11 @@ export function CliSetupDialog({
                     <RefreshCw className="h-3 w-3" />
                     Regenerate
                   </Button>
-                  <span className="text-[11px] text-muted-foreground/60">
-                    Token is short-lived. Regenerate if expired.
-                  </span>
                 </div>
+                <p className="text-[11px] text-muted-foreground/60">
+                  Regenerate the token if the token expired. If the session
+                  expired, create a new session instead.
+                </p>
               </>
             ) : (
               <>

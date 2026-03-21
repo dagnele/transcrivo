@@ -8,7 +8,14 @@ import {
   createSessionReadyEnvelope,
   toInternalSessionEvent,
 } from "@/server/ws-protocol";
+import { db } from "@/server/db/client";
+import { sessions } from "@/server/db/schema";
+import {
+  assertSessionAcceptsCliTraffic,
+  SessionStateError,
+} from "@/server/session-lifecycle";
 import { verifySessionToken, TokenError, type TokenPayload } from "@/server/token";
+import { and, eq } from "drizzle-orm";
 
 function sendJson(socket: import("ws").WebSocket, payload: object) {
   socket.send(JSON.stringify(payload));
@@ -43,6 +50,33 @@ export function createCliWebSocketServer() {
   return new WebSocketServer({ noServer: true });
 }
 
+async function validateCliTokenSessionAccess(tokenPayload: TokenPayload) {
+  if (!tokenPayload.uid) {
+    throw new TokenError("Token is missing user id");
+  }
+
+  const session = await db.query.sessions.findFirst({
+    where: and(
+      eq(sessions.id, tokenPayload.sid),
+      eq(sessions.userId, tokenPayload.uid),
+    ),
+  });
+
+  if (!session) {
+    throw new TokenError("Token is not valid for this session");
+  }
+
+  try {
+    return await assertSessionAcceptsCliTraffic(session);
+  } catch (error) {
+    if (error instanceof SessionStateError) {
+      throw new TokenError(error.message);
+    }
+
+    throw error;
+  }
+}
+
 export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
   webSocketServer.on("connection", async (socket, request: IncomingMessage) => {
     const path = request.url ?? "";
@@ -63,6 +97,7 @@ export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
     let tokenPayload: TokenPayload;
     try {
       tokenPayload = await verifySessionToken(rawToken);
+      await validateCliTokenSessionAccess(tokenPayload);
     } catch (error) {
       const message = error instanceof TokenError ? error.message : "Authentication failed";
       sendJson(socket, createSessionErrorEnvelope(message, "auth_failed"));
@@ -79,10 +114,9 @@ export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
         const envelope = cliOutboundEnvelopeSchema.parse(decoded);
 
         if (envelope.type === "session.start") {
-          acknowledged = true;
-
           try {
             await ingestSessionEvent(toInternalSessionEvent(envelope, authenticatedSessionId));
+            acknowledged = true;
             sendJson(socket, createSessionReadyEnvelope());
           } catch (error) {
             const message =

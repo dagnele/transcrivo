@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { SessionLiveView } from "@/components/sessions/session-live-view";
 import { getServerTRPCCaller } from "@/server/api/caller";
+import { getRequiredSession } from "@/server/auth-session";
 
 type SessionDetailPageProps = {
   params: Promise<{
@@ -15,6 +16,8 @@ type SessionDetailPageProps = {
 export default async function SessionDetailPage({
   params,
 }: SessionDetailPageProps) {
+  await getRequiredSession();
+
   const { sessionId } = await params;
 
   let session: Awaited<

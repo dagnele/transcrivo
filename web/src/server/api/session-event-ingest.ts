@@ -16,6 +16,10 @@ import {
 import { scheduleSessionSolutionGeneration } from "@/server/ai/session-solution-worker";
 import { db } from "@/server/db/client";
 import { sessionEvents, sessions } from "@/server/db/schema";
+import {
+  assertSessionAcceptsCliTraffic,
+  calculateSessionExpiresAt,
+} from "@/server/session-lifecycle";
 
 function getNextSessionStatus(
   currentStatus: SessionStatus,
@@ -54,6 +58,11 @@ export async function ingestSessionEvent(input: unknown) {
       message: "Session not found.",
     });
   }
+
+  const checkedSession =
+    parsedInput.data.type === "session.started"
+      ? session
+      : await assertSessionAcceptsCliTraffic(session);
 
   if (
     (parsedInput.data.type === "transcript.partial" ||
@@ -103,21 +112,28 @@ export async function ingestSessionEvent(input: unknown) {
 
   if (
     !isPartialEvent &&
-    (nextStatus !== session.status || parsedInput.data.type === "session.started")
+    (nextStatus !== checkedSession.status || parsedInput.data.type === "session.started")
   ) {
+    const startedAt =
+      parsedInput.data.type === "session.started"
+        ? checkedSession.startedAt ?? event.createdAt
+        : checkedSession.startedAt;
+    const expiresAt =
+      parsedInput.data.type === "session.started"
+        ? checkedSession.expiresAt ?? calculateSessionExpiresAt(startedAt ?? event.createdAt)
+        : checkedSession.expiresAt;
+
     await db
       .update(sessions)
       .set({
         status: nextStatus,
-        startedAt:
-          parsedInput.data.type === "session.started"
-            ? session.startedAt ?? event.createdAt
-            : session.startedAt,
+        startedAt,
         endedAt:
           parsedInput.data.type === "session.ended" ||
           parsedInput.data.type === "session.failed"
             ? event.createdAt
-            : session.endedAt,
+            : checkedSession.endedAt,
+        expiresAt,
       })
       .where(eq(sessions.id, parsedInput.data.sessionId));
   }
