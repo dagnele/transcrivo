@@ -81,6 +81,10 @@ async function runGeneration(sessionId: string, requestedSequence: number) {
       return;
     }
 
+    if (!session.solutionEnabled) {
+      return;
+    }
+
     const transcriptEvents = await db
       .select()
       .from(sessionEvents)

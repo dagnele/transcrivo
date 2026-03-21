@@ -142,7 +142,14 @@ export async function ingestSessionEvent(input: unknown) {
   publishSessionEvent(parsedEvent);
 
   if (parsedEvent.type === "transcript.final") {
-    scheduleSessionSolutionGeneration(parsedEvent.sessionId, parsedEvent.sequence);
+    const currentSession = await db.query.sessions.findFirst({
+      where: eq(sessions.id, parsedEvent.sessionId),
+      columns: { solutionEnabled: true },
+    });
+
+    if (currentSession?.solutionEnabled !== false) {
+      scheduleSessionSolutionGeneration(parsedEvent.sessionId, parsedEvent.sequence);
+    }
   }
 
   return parsedEvent;

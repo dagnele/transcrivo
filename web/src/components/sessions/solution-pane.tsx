@@ -13,6 +13,7 @@ type SolutionViewState = {
   status: "idle" | "generating" | "draft" | "ready" | "error";
   solution: SessionSolution | null;
   isCatchingUp: boolean;
+  solutionEnabled: boolean;
 };
 
 type SolutionPaneProps = {
@@ -140,7 +141,9 @@ export function SolutionPane({ state }: SolutionPaneProps) {
           <div className="flex h-full flex-col items-center justify-center text-center">
             <Sparkles className="h-5 w-5 text-muted-foreground/50" />
             <p className="mt-4 text-sm text-muted-foreground">
-              Solution will appear once the transcript begins.
+              {state.solutionEnabled
+                ? "Solution will appear once the transcript begins."
+                : "AI generation is off. Turn it on to get a solution."}
             </p>
           </div>
         ) : null}

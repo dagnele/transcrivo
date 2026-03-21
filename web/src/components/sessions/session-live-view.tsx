@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { useSubscription } from "@trpc/tanstack-react-query";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Terminal } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { Switch } from "@/components/ui/switch";
 import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
 import { SolutionPane } from "@/components/sessions/solution-pane";
 import {
@@ -308,8 +309,45 @@ export function SessionLiveView({
   const [solutionState, setSolutionState] = useState(() =>
     getInitialSolutionState(initialSolution),
   );
+  const [solutionEnabled, setSolutionEnabled] = useState(session.solutionEnabled);
+  const toggleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialAfterSequence = initialState.lastSequence;
   const initialAfterVersion = initialSolution?.version;
+
+  const toggleSolutionMutation = useMutation(
+    trpc.session.toggleSolution.mutationOptions(),
+  );
+
+  const handleToggleSolution = useCallback(
+    (checked: boolean) => {
+      setSolutionEnabled(checked);
+
+      if (toggleDebounceRef.current) {
+        clearTimeout(toggleDebounceRef.current);
+      }
+
+      toggleDebounceRef.current = setTimeout(() => {
+        toggleDebounceRef.current = null;
+        toggleSolutionMutation.mutate(
+          { sessionId: session.id, enabled: checked },
+          {
+            onError() {
+              setSolutionEnabled(!checked);
+            },
+          },
+        );
+      }, 5000);
+    },
+    [toggleSolutionMutation, session.id],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (toggleDebounceRef.current) {
+        clearTimeout(toggleDebounceRef.current);
+      }
+    };
+  }, []);
 
   useSubscription(
     trpc.session.subscribe.subscriptionOptions(
@@ -501,11 +539,23 @@ export function SessionLiveView({
               <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
                 Solution
               </p>
-              {solutionSubscription.status !== "pending" ? (
-                <span className="text-[11px] text-muted-foreground/60 capitalize">
-                  {getConnectionLabel(solutionSubscription.status)}
-                </span>
-              ) : null}
+              <div className="flex items-center gap-3">
+                {solutionSubscription.status !== "pending" ? (
+                  <span className="text-[11px] text-muted-foreground/60 capitalize">
+                    {getConnectionLabel(solutionSubscription.status)}
+                  </span>
+                ) : null}
+                <label className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-muted-foreground/60">
+                    AI
+                  </span>
+                  <Switch
+                    size="sm"
+                    checked={solutionEnabled}
+                    onCheckedChange={handleToggleSolution}
+                  />
+                </label>
+              </div>
             </div>
             <div className="min-h-0 flex-1">
               <SolutionPane
@@ -513,6 +563,7 @@ export function SessionLiveView({
                   status: solutionState.status,
                   solution: solutionState.solution,
                   isCatchingUp,
+                  solutionEnabled,
                 }}
               />
             </div>

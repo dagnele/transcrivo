@@ -1,4 +1,5 @@
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -63,6 +64,7 @@ export const sessions = pgTable(
       withTimezone: true,
       mode: "date",
     }),
+    solutionEnabled: boolean("solution_enabled").notNull().default(false),
   },
   (table) => ({
     userCreatedAtIdx: index("sessions_user_created_at_idx").on(

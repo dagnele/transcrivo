@@ -15,6 +15,20 @@
       "when": 1774090377226,
       "tag": "0001_sad_bug",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774093091892,
+      "tag": "0002_fearless_the_professor",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774093276508,
+      "tag": "0003_friendly_brother_voodoo",
+      "breakpoints": true
     }
   ]
 }

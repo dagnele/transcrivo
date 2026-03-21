@@ -19,12 +19,14 @@ import {
   paginatedSessionsSchema,
   sessionIdInputSchema,
   sessionSchema,
+  toggleSolutionInputSchema,
   updateSessionInputSchema,
 } from "@/lib/contracts/session";
 import {
   subscribeToSessionEvents,
   subscribeToSessionSolutionEvents,
 } from "@/server/api/session-events";
+import { scheduleSessionSolutionGeneration } from "@/server/ai/session-solution-worker";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db/client";
 import { sessionEvents, sessionSolutions, sessions } from "@/server/db/schema";
@@ -49,6 +51,9 @@ export const sessionRouter = createTRPCRouter({
     .input(createSessionInputSchema)
     .output(sessionSchema)
     .mutation(async ({ ctx, input }) => {
+      const solutionEnabled =
+        input.type === "coding" || input.type === "system_design";
+
       const [session] = await db
         .insert(sessions)
         .values({
@@ -58,6 +63,7 @@ export const sessionRouter = createTRPCRouter({
           type: input.type,
           language: input.language,
           status: "draft",
+          solutionEnabled,
         })
         .returning();
 
@@ -343,6 +349,41 @@ export const sessionRouter = createTRPCRouter({
       const token = await signSessionToken(session.id, expiresAt, ctx.session.user.id);
 
       return { token, expiresAt };
+    }),
+
+  toggleSolution: protectedProcedure
+    .input(toggleSolutionInputSchema)
+    .output(sessionSchema)
+    .mutation(async ({ ctx, input }) => {
+      const [session] = await db
+        .update(sessions)
+        .set({ solutionEnabled: input.enabled })
+        .where(and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)))
+        .returning();
+
+      if (!session) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Session not found.",
+        });
+      }
+
+      if (input.enabled) {
+        const latestFinalEvent = await db.query.sessionEvents.findFirst({
+          where: and(
+            eq(sessionEvents.sessionId, input.sessionId),
+            eq(sessionEvents.type, "transcript.final"),
+          ),
+          orderBy: desc(sessionEvents.sequence),
+          columns: { sequence: true },
+        });
+
+        if (latestFinalEvent) {
+          scheduleSessionSolutionGeneration(input.sessionId, latestFinalEvent.sequence);
+        }
+      }
+
+      return sessionSchema.parse(session);
     }),
 
 });

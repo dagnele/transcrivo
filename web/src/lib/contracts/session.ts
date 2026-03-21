@@ -68,6 +68,7 @@ export const sessionSchema = sessionBaseSchema
   .extend({
     id: sessionIdSchema,
     status: sessionStatusSchema,
+    solutionEnabled: z.boolean(),
     createdAt: z.date(),
     startedAt: z.date().nullable(),
     endedAt: z.date().nullable(),
@@ -100,6 +101,11 @@ export const listSessionsInputSchema = z.object({
   status: sessionStatusSchema.optional(),
   limit: z.number().int().min(1).max(50).default(20),
   cursor: z.string().datetime().optional(),
+});
+
+export const toggleSolutionInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  enabled: z.boolean(),
 });
 
 export const paginatedSessionsSchema = z.object({
