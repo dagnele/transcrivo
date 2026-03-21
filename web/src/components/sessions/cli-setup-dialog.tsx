@@ -117,21 +117,36 @@ export function CliSetupDialog({
         <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">
-              1. Install the CLI (if you haven&apos;t already)
+              1. Install build dependencies
             </p>
-            <CopyBlock value="pip install cheatcode-cli" />
+            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              <p>Recommended on Linux:</p>
+              <p>Rust toolchain with `cargo`, `pkg-config`, and PipeWire / SPA development headers.</p>
+              <p>For GPU acceleration, prefer Vulkan. Use CUDA if you specifically want an NVIDIA-only build.</p>
+              <p>Package names vary by distro, but you typically need PipeWire dev packages plus Vulkan or CUDA drivers/runtime.</p>
+            </div>
           </div>
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">
-              2. List available audio devices
+              2. Install the Rust CLI from this repo root
+            </p>
+            <CopyBlock value="cargo install --path ./cli --locked --features whisper-gpu-vulkan" />
+            <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+              Recommended: <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">whisper-gpu-vulkan</code>. Use <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">whisper-gpu-cuda</code> instead if you want a CUDA build.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              3. List available audio devices
             </p>
             <CopyBlock value="cheatcode devices" />
           </div>
 
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">
-              3. Generate a connection token
+              4. Generate a connection token
             </p>
             {token ? (
               <>
@@ -185,7 +200,7 @@ export function CliSetupDialog({
           {command && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
-                4. Start streaming
+                5. Start streaming
               </p>
               <CopyBlock value={command} />
               <p className="text-[11px] leading-relaxed text-muted-foreground/70">

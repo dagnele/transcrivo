@@ -539,10 +539,10 @@ export function SessionsShell({
               <Select
                 value={createLanguage ?? ""}
                 onValueChange={(value: string) => setCreateLanguage(value as SessionLanguage)}
-                disabled={createType === "system_design"}
+                disabled={createType !== "coding"}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={createType === "system_design" ? "No language" : undefined} />
+                  <SelectValue placeholder={createType !== "coding" ? "No language" : undefined} />
                 </SelectTrigger>
                 <SelectContent>
                   {sessionLanguageOptions.map((option) => (
@@ -628,10 +628,10 @@ export function SessionsShell({
               <Select
                 value={renameLanguage ?? ""}
                 onValueChange={(value: string) => setRenameLanguage(value as SessionLanguage)}
-                disabled={renameType === "system_design"}
+                disabled={renameType !== "coding"}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder={renameType === "system_design" ? "No language" : undefined} />
+                  <SelectValue placeholder={renameType !== "coding" ? "No language" : undefined} />
                 </SelectTrigger>
                 <SelectContent>
                   {sessionLanguageOptions.map((option) => (

@@ -2,7 +2,12 @@ import { z } from "zod";
 
 export const sessionStatusValues = ["draft", "live", "ended", "failed", "expired"] as const;
 
-export const sessionTypeValues = ["coding", "system_design"] as const;
+export const sessionTypeValues = [
+  "coding",
+  "system_design",
+  "writing",
+  "meeting_summary",
+] as const;
 
 export const sessionLanguageValues = [
   "python",
@@ -50,11 +55,11 @@ function refineSessionLanguage(
     });
   }
 
-  if (value.type === "system_design" && value.language !== null) {
+  if (value.type !== "coding" && value.language !== null) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["language"],
-      message: "System design sessions should not have a coding language.",
+      message: "Only coding sessions can have a coding language.",
     });
   }
 }

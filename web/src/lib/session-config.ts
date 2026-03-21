@@ -9,6 +9,8 @@ export const sessionTypeOptions: ReadonlyArray<{
 }> = [
   { value: "coding", label: "Coding" },
   { value: "system_design", label: "System design" },
+  { value: "writing", label: "Writing" },
+  { value: "meeting_summary", label: "Meeting summary" },
 ];
 
 export const sessionLanguageOptions: ReadonlyArray<{

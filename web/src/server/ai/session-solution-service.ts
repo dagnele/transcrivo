@@ -14,10 +14,10 @@ const solutionPromptVersion = "v1";
 type TranscriptSummary = {
   transcript: string;
   finalEventCount: number;
-  candidateTurns: number;
-  interviewerTurns: number;
-  latestCandidateMessage: string | null;
-  latestInterviewerMessage: string | null;
+  micTurns: number;
+  systemTurns: number;
+  latestMicMessage: string | null;
+  latestSystemMessage: string | null;
 };
 
 function formatTimestamp(ms: number) {
@@ -32,10 +32,10 @@ function formatTimestamp(ms: number) {
 
 function buildTranscriptContext(events: SessionEvent[]): TranscriptSummary {
   let finalEventCount = 0;
-  let candidateTurns = 0;
-  let interviewerTurns = 0;
-  let latestCandidateMessage: string | null = null;
-  let latestInterviewerMessage: string | null = null;
+  let micTurns = 0;
+  let systemTurns = 0;
+  let latestMicMessage: string | null = null;
+  let latestSystemMessage: string | null = null;
 
   const transcript = events
     .filter((event) => event.type === "transcript.final")
@@ -47,14 +47,14 @@ function buildTranscriptContext(events: SessionEvent[]): TranscriptSummary {
 
       finalEventCount += 1;
 
-      const speaker = parsed.data.source === "mic" ? "Candidate" : "Interviewer";
+      const speaker = parsed.data.source === "mic" ? "Speaker" : "System";
 
-      if (speaker === "Candidate") {
-        candidateTurns += 1;
-        latestCandidateMessage = parsed.data.text;
+      if (speaker === "Speaker") {
+        micTurns += 1;
+        latestMicMessage = parsed.data.text;
       } else {
-        interviewerTurns += 1;
-        latestInterviewerMessage = parsed.data.text;
+        systemTurns += 1;
+        latestSystemMessage = parsed.data.text;
       }
 
       return `[${speaker} ${formatTimestamp(parsed.data.startMs)}-${formatTimestamp(parsed.data.endMs)}] ${parsed.data.text}`;
@@ -65,33 +65,41 @@ function buildTranscriptContext(events: SessionEvent[]): TranscriptSummary {
   return {
     transcript,
     finalEventCount,
-    candidateTurns,
-    interviewerTurns,
-    latestCandidateMessage,
-    latestInterviewerMessage,
+    micTurns,
+    systemTurns,
+    latestMicMessage,
+    latestSystemMessage,
   };
 }
 
 function inferSessionIntent(sessionTitle: string) {
   const normalized = sessionTitle.toLowerCase();
 
+  if (normalized.includes("meeting") || normalized.includes("sync")) {
+    return "meeting notes";
+  }
+
+  if (normalized.includes("write") || normalized.includes("draft")) {
+    return "drafting assistance";
+  }
+
   if (normalized.includes("frontend") || normalized.includes("react")) {
-    return "frontend interview";
+    return "frontend work";
   }
 
   if (normalized.includes("backend") || normalized.includes("api")) {
-    return "backend interview";
+    return "backend work";
   }
 
   if (normalized.includes("algorithm") || normalized.includes("leetcode")) {
-    return "algorithmic interview";
+    return "algorithmic problem solving";
   }
 
   if (normalized.includes("system design")) {
-    return "system design interview";
+    return "system design work";
   }
 
-  return "technical interview";
+  return "technical work";
 }
 
 function getSessionConstraintInstructions(session: Session) {
@@ -109,6 +117,40 @@ function getSessionConstraintInstructions(session: Session) {
         "Session coding language: none",
         "Focus on system design reasoning instead of code by default.",
         "Include at least one Mermaid diagram showing the high-level architecture or data flow.",
+      ],
+    };
+  }
+
+  if (session.type === "writing") {
+    return {
+      system: [
+        "This is a writing session.",
+        "Infer the likely writing goal from the transcript and produce polished written output.",
+        "Do not merely summarize the transcript; turn it into useful prose.",
+        "Preserve the speaker's likely intent and tone when reasonably clear.",
+      ],
+      prompt: [
+        `Session type: ${getSessionTypeLabel(session.type)}`,
+        "Session coding language: none",
+        "Turn the spoken transcript into clear written output.",
+        "If the transcript is ambiguous, state the most likely intent briefly before drafting.",
+      ],
+    };
+  }
+
+  if (session.type === "meeting_summary") {
+    return {
+      system: [
+        "This is a meeting summary session.",
+        "Extract structured notes from the transcript instead of writing a solution.",
+        "Prefer explicit facts from the transcript over unsupported inference.",
+        "List decisions, action items, risks, and open questions only when they are supported by the transcript.",
+      ],
+      prompt: [
+        `Session type: ${getSessionTypeLabel(session.type)}`,
+        "Session coding language: none",
+        "Turn the transcript into concise, operational meeting notes.",
+        "Avoid inventing deadlines, owners, or commitments that are not stated.",
       ],
     };
   }
@@ -138,41 +180,102 @@ function buildSolutionPrompt(
   summary: TranscriptSummary,
 ) {
   const sessionIntent = inferSessionIntent(session.title);
-  const latestCandidateMessage =
-    summary.latestCandidateMessage ?? "No explicit candidate answer yet.";
-  const latestInterviewerMessage =
-    summary.latestInterviewerMessage ?? "No explicit interviewer prompt captured yet.";
+  const latestSpeakerMessage = summary.latestMicMessage ?? "No explicit spoken input captured yet.";
+  const latestSystemMessage =
+    summary.latestSystemMessage ?? "No explicit system-side transcript captured yet.";
   const sessionConstraints = getSessionConstraintInstructions(session);
+
+  const basePrompt = [
+    `Session title: ${session.title}`,
+    ...sessionConstraints.prompt,
+    `Intent hint: ${sessionIntent}`,
+    `Final transcript turns captured: ${summary.finalEventCount}`,
+    `Speaker turns: ${summary.micTurns}`,
+    `System turns: ${summary.systemTurns}`,
+    "",
+    "Latest speaker input:",
+    latestSpeakerMessage,
+    "",
+    "Latest system transcript:",
+    latestSystemMessage,
+    "",
+    "Transcript:",
+    summary.transcript,
+    "",
+  ];
+
+  if (session.type === "writing") {
+    return {
+      system: [
+        "You help turn spoken thoughts into clear written output.",
+        "Return only Markdown.",
+        "Do not use raw HTML.",
+        "Do not reveal hidden chain-of-thought.",
+        "Be practical, concise, and directly useful.",
+        "Prefer short sections with headings.",
+        ...sessionConstraints.system,
+        "If the transcript is incomplete, make the best reasonable inference and say so briefly.",
+      ].join(" "),
+      prompt: [
+        ...basePrompt,
+        "Produce Markdown with this shape:",
+        "1. ## Intent",
+        "2. ## Draft",
+        "3. ## Notes",
+        "",
+        "Rules:",
+        "- Keep each section concise and scannable.",
+        "- In ## Intent, state what you believe the speaker is trying to write.",
+        "- In ## Draft, provide polished, usable text rather than bullet fragments unless the transcript clearly calls for an outline.",
+        "- In ## Notes, call out missing context, assumptions, or suggested next improvements briefly.",
+      ].join("\n"),
+    };
+  }
+
+  if (session.type === "meeting_summary") {
+    return {
+      system: [
+        "You convert spoken conversation into structured meeting notes.",
+        "Return only Markdown.",
+        "Do not use raw HTML.",
+        "Do not reveal hidden chain-of-thought.",
+        "Be practical, concise, and directly useful.",
+        "Prefer short sections with headings.",
+        ...sessionConstraints.system,
+        "If the transcript is incomplete, make the best reasonable inference and say so briefly.",
+      ].join(" "),
+      prompt: [
+        ...basePrompt,
+        "Produce Markdown with this shape:",
+        "1. ## Summary",
+        "2. ## Decisions",
+        "3. ## Action Items",
+        "4. ## Risks / Blockers",
+        "5. ## Open Questions",
+        "",
+        "Rules:",
+        "- Keep each section concise and scannable.",
+        "- Use bullets where appropriate.",
+        "- If a section has no support in the transcript, say `None captured.` instead of inventing details.",
+        "- Include owners or deadlines only when they are explicitly stated or strongly implied by the transcript.",
+      ].join("\n"),
+    };
+  }
 
   return {
     system: [
-      "You are helping a candidate during a live mock technical interview.",
+      "You are helping during a live technical session.",
       "Return only Markdown.",
       "Do not use raw HTML.",
       "Do not reveal hidden chain-of-thought.",
-      "Be practical, concise, and directly useful during the interview.",
+      "Be practical, concise, and directly useful.",
       "Prefer short sections with headings.",
       ...sessionConstraints.system,
       "If the transcript is incomplete, make the best reasonable inference and say so briefly.",
     ].join(" "),
     prompt: [
-      `Session title: ${session.title}`,
-      ...sessionConstraints.prompt,
-      `Interview type hint: ${sessionIntent}`,
-      `Final transcript turns captured: ${summary.finalEventCount}`,
-      `Candidate turns: ${summary.candidateTurns}`,
-      `Interviewer turns: ${summary.interviewerTurns}`,
-      "",
-      "Latest interviewer prompt:",
-      latestInterviewerMessage,
-      "",
-      "Latest candidate response:",
-      latestCandidateMessage,
-      "",
-      "Transcript:",
-      summary.transcript,
-      "",
-      "Produce a mock interview solution in Markdown with this shape:",
+      ...basePrompt,
+      "Produce Markdown with this shape:",
       "1. ## Understanding",
       "2. ## Approach",
       "3. ## Solution",
@@ -180,10 +283,10 @@ function buildSolutionPrompt(
       "",
       "Rules:",
       "- Keep each section concise and scannable.",
-      "- Tailor the answer to what the interviewer seems to be asking.",
+      "- Tailor the answer to what the transcript seems to be asking for.",
       "- Prefer one strong solution over multiple scattered alternatives.",
-      "- Include code only when it materially helps the candidate.",
-      "- If code is included, keep it interview-ready and explain key tradeoffs briefly.",
+      "- Include code only when it materially helps.",
+      "- If code is included, keep it concise and explain key tradeoffs briefly.",
     ].join("\n"),
   };
 }
