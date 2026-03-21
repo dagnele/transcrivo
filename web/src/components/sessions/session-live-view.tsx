@@ -8,6 +8,11 @@ import { Terminal } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
@@ -421,12 +426,42 @@ export function SessionLiveView({
               ? ` / ${getSessionLanguageLabel(session.language)}`
               : null}
           </span>
-          <Badge
-            variant={getStatusVariant(sessionState.status)}
-            className="capitalize"
-          >
-            {sessionState.status}
-          </Badge>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" className="cursor-pointer">
+                <Badge
+                  variant={getStatusVariant(sessionState.status)}
+                  className="capitalize"
+                >
+                  {sessionState.status}
+                </Badge>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-60 p-3">
+              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[11px]">
+                <span className="text-muted-foreground/60">Created</span>
+                <span className="text-muted-foreground">{formatTimestamp(session.createdAt) ?? "-"}</span>
+
+                <span className="text-muted-foreground/60">
+                  {sessionState.startedAt ? "Started" : "Starts"}
+                </span>
+                <span className="text-muted-foreground">
+                  {sessionState.startedAt
+                    ? formatTimestamp(sessionState.startedAt) ?? "-"
+                    : "On first CLI connection"}
+                </span>
+
+                <span className="text-muted-foreground/60">
+                  {sessionState.status === "expired" ? "Expired" : "Expires"}
+                </span>
+                <span className="text-muted-foreground">
+                  {sessionState.expiresAt
+                    ? formatTimestamp(sessionState.expiresAt) ?? "-"
+                    : "1 hour after start"}
+                </span>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -440,23 +475,6 @@ export function SessionLiveView({
           </Button>
         </div>
       </header>
-
-      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/40 px-6 py-2 text-[11px] text-muted-foreground/80">
-        <span>Created {formatTimestamp(session.createdAt) ?? "-"}</span>
-        {sessionState.startedAt ? (
-          <span>Started {formatTimestamp(sessionState.startedAt) ?? "-"}</span>
-        ) : (
-          <span>Starts when the CLI sends `session.start`</span>
-        )}
-        {sessionState.expiresAt ? (
-          <span>
-            {sessionState.status === "expired" ? "Expired" : "Expires"}{" "}
-            {formatTimestamp(sessionState.expiresAt) ?? "-"}
-          </span>
-        ) : (
-          <span>Expires 1 hour after the session starts</span>
-        )}
-      </div>
 
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
         {/* Transcript */}
