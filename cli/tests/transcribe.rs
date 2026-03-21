@@ -1,0 +1,355 @@
+use std::sync::Arc;
+
+use cheatcode_cli_rs::audio::capture::CaptureSource;
+use cheatcode_cli_rs::audio::preprocess::AudioChunk;
+use cheatcode_cli_rs::session::manager::SessionManager;
+use cheatcode_cli_rs::session::models::Source;
+use cheatcode_cli_rs::transcribe::pipeline::TranscriptPipeline;
+use cheatcode_cli_rs::transcribe::whisper_cpp::{
+    TranscriptSegment, TranscriptionError, WhisperBackend, WhisperCppAdapter, WhisperCppConfig,
+};
+use cheatcode_cli_rs::transport::protocol::MessageType;
+
+const WHISPER_SMOKE_MODEL_PATH_ENV: &str = "CHEATCODE_WHISPER_SMOKE_MODEL_PATH";
+
+#[derive(Debug)]
+struct FakeBackend {
+    responses: Vec<Vec<TranscriptSegment>>,
+}
+
+impl FakeBackend {
+    fn new(responses: Vec<Vec<TranscriptSegment>>) -> Self {
+        Self { responses }
+    }
+}
+
+struct FakeBackendHandle(std::sync::Mutex<FakeBackend>);
+
+impl WhisperBackend for FakeBackendHandle {
+    fn transcribe(
+        &self,
+        _chunk: &AudioChunk,
+        _config: &WhisperCppConfig,
+    ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
+        let mut backend = self.0.lock().expect("backend lock");
+        Ok(if backend.responses.is_empty() {
+            Vec::new()
+        } else {
+            backend.responses.remove(0)
+        })
+    }
+}
+
+fn build_chunk(source: CaptureSource, start_ms: u64, end_ms: u64) -> AudioChunk {
+    AudioChunk {
+        source,
+        device_id: format!("{:?}-device", source).to_lowercase(),
+        sample_rate: 16_000,
+        channels: 1,
+        start_ms,
+        end_ms,
+        frame_count: 16_000,
+        samples: (0..16_000)
+            .map(|i| -0.2 + 0.4 * i as f32 / 15_999.0)
+            .collect(),
+    }
+}
+
+fn build_smoke_chunk(source: CaptureSource) -> AudioChunk {
+    let sample_rate = 16_000;
+    let duration_seconds = 2.0_f32;
+    let frame_count = (sample_rate as f32 * duration_seconds) as usize;
+    let samples = (0..frame_count)
+        .map(|index| {
+            let time = index as f32 / sample_rate as f32;
+            let envelope = (1.0 - (time / duration_seconds)).max(0.2);
+            let tone_a = (2.0 * std::f32::consts::PI * 220.0 * time).sin();
+            let tone_b = (2.0 * std::f32::consts::PI * 440.0 * time).sin();
+            0.15 * envelope * (0.7 * tone_a + 0.3 * tone_b)
+        })
+        .collect();
+
+    AudioChunk {
+        source,
+        device_id: format!("{:?}-smoke-device", source).to_lowercase(),
+        sample_rate,
+        channels: 1,
+        start_ms: 0,
+        end_ms: 2000,
+        frame_count,
+        samples,
+    }
+}
+
+fn build_adapter(responses: Vec<Vec<TranscriptSegment>>) -> WhisperCppAdapter {
+    WhisperCppAdapter::new(
+        WhisperCppConfig {
+            language: Some("en".to_string()),
+            ..WhisperCppConfig::default()
+        },
+        Box::new(FakeBackendHandle(std::sync::Mutex::new(FakeBackend::new(
+            responses,
+        )))),
+    )
+}
+
+#[test]
+fn adapter_reports_unconfigured_backend() {
+    let adapter = WhisperCppAdapter::unconfigured();
+    let error = adapter
+        .transcribe_chunk(&build_chunk(CaptureSource::Mic, 0, 1000))
+        .expect_err("unconfigured adapter should fail");
+
+    assert_eq!(error.to_string(), "whisper.cpp adapter is not configured");
+}
+
+#[test]
+fn pipeline_emits_final_messages() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: "answer".to_string(),
+        start_ms: 0,
+        end_ms: 500,
+        confidence: Some(0.9),
+        language: Some("en".to_string()),
+        chunk_id: Some("mic:0:1000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, false);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::Mic, 0, 1000))
+        .expect("pipeline should transcribe");
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message_type, MessageType::TranscriptFinal);
+    assert_eq!(messages[0].payload["speaker"], "Mic");
+    assert_eq!(messages[0].payload["source"], "mic");
+    assert_eq!(messages[0].payload["device_id"], "mic-device");
+    assert_eq!(messages[0].payload["text"], "answer");
+}
+
+#[test]
+fn pipeline_drops_partials_by_default() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: "draft".to_string(),
+        start_ms: 0,
+        end_ms: 500,
+        confidence: None,
+        language: Some("en".to_string()),
+        chunk_id: None,
+        is_partial: true,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, false);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 1000, 2000))
+        .expect("pipeline should transcribe");
+
+    assert!(messages.is_empty());
+}
+
+#[test]
+fn pipeline_can_emit_partials_when_enabled() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: "draft".to_string(),
+        start_ms: 1000,
+        end_ms: 1500,
+        confidence: None,
+        language: Some("en".to_string()),
+        chunk_id: None,
+        is_partial: true,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 1000, 2000))
+        .expect("pipeline should transcribe");
+
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].message_type, MessageType::TranscriptPartial);
+    assert_eq!(messages[0].payload["speaker"], "System");
+}
+
+#[test]
+fn pipeline_flush_pending_finalizes_last_partial() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: "closing thought".to_string(),
+        start_ms: 0,
+        end_ms: 500,
+        confidence: None,
+        language: Some("en".to_string()),
+        chunk_id: None,
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let partial_messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 1000))
+        .expect("partial should emit");
+    let final_messages = pipeline.flush_pending().expect("flush should work");
+
+    assert_eq!(partial_messages.len(), 1);
+    assert_eq!(
+        partial_messages[0].message_type,
+        MessageType::TranscriptPartial
+    );
+    assert_eq!(final_messages.len(), 1);
+    assert_eq!(final_messages[0].message_type, MessageType::TranscriptFinal);
+    assert_eq!(final_messages[0].payload["text"], "closing thought");
+}
+
+#[test]
+fn pipeline_rejects_source_mismatch() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![Vec::new()]);
+    let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, false);
+
+    let error = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 1000))
+        .expect_err("source mismatch should fail");
+
+    assert!(error.to_string().contains("cannot process chunk"));
+}
+
+#[test]
+fn pipeline_drops_blank_audio_segments() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: "[BLANK_AUDIO]".to_string(),
+        start_ms: 0,
+        end_ms: 1000,
+        confidence: Some(0.03),
+        language: Some("en".to_string()),
+        chunk_id: Some("mic:0:1000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, true);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::Mic, 0, 1000))
+        .expect("blank audio should be ignored");
+
+    assert!(messages.is_empty());
+    assert!(!pipeline.has_pending());
+}
+
+#[test]
+fn pipeline_keeps_device_id_when_finalizing_pending_utterance() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: "closing thought".to_string(),
+        start_ms: 0,
+        end_ms: 500,
+        confidence: None,
+        language: Some("en".to_string()),
+        chunk_id: Some("system:0:1000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let partial_messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 1000))
+        .expect("partial should emit");
+    let final_messages = pipeline.flush_pending().expect("flush should work");
+
+    assert_eq!(partial_messages[0].payload["device_id"], "system-device");
+    assert_eq!(final_messages[0].payload["device_id"], "system-device");
+}
+
+#[test]
+fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system";
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: text.to_string(),
+        start_ms: 0,
+        end_ms: 3000,
+        confidence: Some(0.9),
+        language: Some("en".to_string()),
+        chunk_id: Some("system:0:3000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+        .expect("pipeline should transcribe");
+
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].message_type, MessageType::TranscriptFinal);
+    assert_eq!(messages[1].message_type, MessageType::TranscriptPartial);
+    assert!(messages[0].payload["text"]
+        .as_str()
+        .expect("final text")
+        .ends_with("..."));
+    assert!(messages[1].payload["text"]
+        .as_str()
+        .expect("partial text")
+        .starts_with("..."));
+}
+
+#[test]
+fn pipeline_flushes_remainder_after_forced_cutoff() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let sentence = "This is a deliberately long sentence that should be emitted as a final chunk when it reaches the cutoff because it ends with a period.";
+    let continuation = "This continuation should remain pending for the next partial update so the user still sees the next phrase taking shape in real time.";
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: format!("{sentence} {continuation}"),
+        start_ms: 0,
+        end_ms: 3000,
+        confidence: Some(0.9),
+        language: Some("en".to_string()),
+        chunk_id: Some("system:0:3000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+        .expect("pipeline should transcribe");
+    let flushed = pipeline.flush_pending().expect("flush should work");
+
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].payload["text"], sentence);
+    assert_eq!(messages[1].payload["text"], continuation);
+    assert_eq!(flushed.len(), 1);
+    assert_eq!(flushed[0].message_type, MessageType::TranscriptFinal);
+    assert_eq!(flushed[0].payload["text"], continuation);
+}
+
+#[test]
+#[ignore = "requires CHEATCODE_WHISPER_SMOKE_MODEL_PATH to point to a local ggml whisper model"]
+fn real_whisper_backend_smoke_test() {
+    let model_path = std::env::var(WHISPER_SMOKE_MODEL_PATH_ENV)
+        .expect("smoke model path env var should be set when running ignored smoke test");
+    let adapter = WhisperCppAdapter::real_at_path(
+        WhisperCppConfig {
+            language: Some("en".to_string()),
+            ..WhisperCppConfig::default()
+        },
+        model_path,
+    )
+    .expect("real adapter should initialize from model path");
+
+    let segments = adapter
+        .transcribe_chunk(&build_smoke_chunk(CaptureSource::Mic))
+        .expect("real backend should complete inference");
+
+    for segment in &segments {
+        segment
+            .validate()
+            .expect("returned segments should be valid");
+    }
+}

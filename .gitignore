@@ -1,0 +1,11 @@
+# Rust CLI
+/cli/target/
+
+# Web app
+/web/node_modules/
+/web/.next/
+/web/tsconfig.tsbuildinfo
+
+# Local environment files
+/web/.env.local
+/web/.env.*.local
