@@ -1,71 +1,41 @@
 "use client";
 
-import { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { useSubscription } from "@trpc/tanstack-react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Terminal } from "lucide-react";
+import { useSubscription } from "@trpc/tanstack-react-query";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
+import { SessionLiveHeader } from "@/components/sessions/session-live-header";
+import { SessionTranscriptPane } from "@/components/sessions/session-transcript-pane";
+import { SolutionPane } from "@/components/sessions/solution-pane";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { Switch } from "@/components/ui/switch";
-import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
-import { SolutionPane } from "@/components/sessions/solution-pane";
-import {
-  transcriptEventPayloadSchema,
-  type SessionEvent,
-} from "@/lib/contracts/event";
+import type { SessionEvent } from "@/lib/contracts/event";
 import {
   type SessionSolution,
   type SessionSolutionEvent,
 } from "@/lib/contracts/solution";
-import type { Session, SessionStatus, SessionType } from "@/lib/contracts/session";
-import {
-  formatTimestamp,
-  formatTimecode,
-  getConnectionLabel,
-  getStatusVariant,
-} from "@/lib/session-ui";
-import { getSessionLanguageLabel, getSessionTypeLabel } from "@/lib/session-config";
+import type { Session, SessionStatus } from "@/lib/contracts/session";
+import { getConnectionLabel } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
-import { cn } from "@/lib/utils";
 
-type TranscriptItem = {
-  id: string;
-  utteranceId: string;
-  sequence: number;
-  speaker: string;
-  source: string;
-  text: string;
-  status: "partial" | "final";
-  startMs: number;
-  endMs: number;
-};
+const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
 
 type SessionLiveViewProps = {
   session: Session;
-  initialHistory: SessionEvent[];
+  initialLastSequence: number;
   initialSolution: SessionSolution | null;
 };
 
-type SessionState = {
+type LifecycleState = {
   status: SessionStatus;
   startedAt: Date | null;
   expiresAt: Date | null;
-  lastSequence: number;
-  transcript: TranscriptItem[];
 };
-
-const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
 
 type SolutionState = {
   status: "idle" | "generating" | "draft" | "ready" | "error";
@@ -73,137 +43,44 @@ type SolutionState = {
   solution: SessionSolution | null;
 };
 
-function applyEvent(state: SessionState, event: SessionEvent): SessionState {
-  if (event.sequence <= state.lastSequence) {
-    return state;
-  }
-
+function applyLifecycleEvent(state: LifecycleState, event: SessionEvent): LifecycleState {
   if (event.type === "session.started") {
     return {
       ...state,
       status: "live",
       startedAt: state.startedAt ?? event.createdAt,
-      expiresAt:
-        state.expiresAt ?? new Date(event.createdAt.getTime() + LOCAL_SESSION_DURATION_MS),
-      lastSequence: event.sequence,
+      expiresAt: state.expiresAt ?? new Date(event.createdAt.getTime() + LOCAL_SESSION_DURATION_MS),
     };
   }
 
   if (event.type === "session.ended") {
-    const reason =
-      typeof event.payload.reason === "string" ? event.payload.reason : null;
+    const reason = typeof event.payload.reason === "string" ? event.payload.reason : null;
 
     if (reason === "session-expired") {
       return {
         ...state,
         status: "expired",
         expiresAt: state.expiresAt ?? event.createdAt,
-        lastSequence: event.sequence,
       };
     }
 
-    return { ...state, status: "ended", lastSequence: event.sequence };
+    return {
+      ...state,
+      status: "ended",
+    };
   }
 
   if (event.type === "session.failed") {
-    return { ...state, status: "failed", lastSequence: event.sequence };
+    return {
+      ...state,
+      status: "failed",
+    };
   }
 
-  if (event.type !== "transcript.partial" && event.type !== "transcript.final") {
-    return { ...state, lastSequence: event.sequence };
-  }
-
-  const payload = transcriptEventPayloadSchema.safeParse(event.payload);
-  if (!payload.success) {
-    return { ...state, lastSequence: event.sequence };
-  }
-
-  const nextTranscript = [...state.transcript];
-  const isFinalEvent = event.type === "transcript.final";
-
-  const nextItem: TranscriptItem = {
-    id: event.id,
-    utteranceId: payload.data.utteranceId,
-    sequence: event.sequence,
-    speaker: payload.data.speaker,
-    source: payload.data.source,
-    text: payload.data.text,
-    status: isFinalEvent ? "final" : "partial",
-    startMs: payload.data.startMs,
-    endMs: payload.data.endMs,
-  };
-
-  const overlapsSameSourcePartial = (item: TranscriptItem) =>
-    item.status === "partial" &&
-    item.source === nextItem.source &&
-    item.startMs <= nextItem.endMs &&
-    item.endMs >= nextItem.startMs;
-
-  const sameUtterance = (item: TranscriptItem) => item.utteranceId === payload.data.utteranceId;
-
-  const overlapsSameSource = (item: TranscriptItem) =>
-    item.source === nextItem.source &&
-    item.startMs <= nextItem.endMs &&
-    item.endMs >= nextItem.startMs;
-
-  const normalizedTranscript = isFinalEvent
-    ? nextTranscript.filter((item) => !overlapsSameSourcePartial(item))
-    : nextTranscript.filter(
-        (item) =>
-          item.status === "final" ||
-          (!sameUtterance(item) && !overlapsSameSourcePartial(item)),
-      );
-
-  const existingIndex = normalizedTranscript.findIndex(
-    (item) => item.status === "partial" && (sameUtterance(item) || overlapsSameSource(item)),
-  );
-
-  if (existingIndex >= 0) {
-    normalizedTranscript[existingIndex] = nextItem;
-  } else {
-    normalizedTranscript.push(nextItem);
-  }
-
-  normalizedTranscript.sort((left, right) => left.sequence - right.sequence);
-
-  return {
-    ...state,
-    lastSequence: event.sequence,
-    transcript: normalizedTranscript,
-  };
+  return state;
 }
 
-function buildInitialState(
-  session: Session,
-  history: SessionEvent[],
-): SessionState {
-  return history.reduce<SessionState>(
-    (state, event) => applyEvent(state, event),
-    {
-      status: session.status,
-      startedAt: session.startedAt,
-      expiresAt: session.expiresAt,
-      lastSequence: 0,
-      transcript: [],
-    },
-  );
-}
-
-function getSystemSpeakerLabel(sessionType: SessionType) {
-  if (sessionType === "writing") return "Reference";
-  if (sessionType === "meeting_summary") return "Participant";
-  return "Interviewer";
-}
-
-function getSpeakerLabel(sessionType: SessionType, source: string, speaker: string) {
-  if (source === "mic") return "You";
-  if (source === "system") return getSystemSpeakerLabel(sessionType);
-  return speaker;
-}
-
-function getInitialSolutionState(
-  initialSolution: SessionSolution | null,
-): SolutionState {
+function getInitialSolutionState(initialSolution: SessionSolution | null): SolutionState {
   if (!initialSolution) {
     return {
       status: "idle",
@@ -232,10 +109,7 @@ function applySolutionEvent(
     return state;
   }
 
-  if (
-    event.payload.version === state.lastVersion &&
-    event.type === "solution.generating"
-  ) {
+  if (event.payload.version === state.lastVersion && event.type === "solution.generating") {
     return state;
   }
 
@@ -255,8 +129,7 @@ function applySolutionEvent(
         ? {
             ...state.solution,
             status: "error",
-            errorMessage:
-              event.payload.errorMessage ?? state.solution.errorMessage,
+            errorMessage: event.payload.errorMessage ?? state.solution.errorMessage,
             updatedAt: event.payload.createdAt,
           }
         : {
@@ -304,30 +177,24 @@ function applySolutionEvent(
 
 export function SessionLiveView({
   session,
-  initialHistory,
+  initialLastSequence,
   initialSolution,
 }: SessionLiveViewProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const bottomRef = useRef<HTMLDivElement>(null);
   const [cliDialogOpen, setCliDialogOpen] = useState(false);
-
-  const initialState = useMemo(
-    () => buildInitialState(session, initialHistory),
-    [initialHistory, session],
-  );
-  const [sessionState, setSessionState] = useState(initialState);
-  const [solutionState, setSolutionState] = useState(() =>
-    getInitialSolutionState(initialSolution),
-  );
+  const [lifecycleState, setLifecycleState] = useState<LifecycleState>({
+    status: session.status,
+    startedAt: session.startedAt,
+    expiresAt: session.expiresAt,
+  });
+  const [transcriptLatestSequence, setTranscriptLatestSequence] = useState(0);
+  const [solutionState, setSolutionState] = useState(() => getInitialSolutionState(initialSolution));
   const [solutionEnabled, setSolutionEnabled] = useState(session.solutionEnabled);
   const toggleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialAfterSequence = initialState.lastSequence;
   const initialAfterVersion = initialSolution?.version;
 
-  const toggleSolutionMutation = useMutation(
-    trpc.session.toggleSolution.mutationOptions(),
-  );
+  const toggleSolutionMutation = useMutation(trpc.session.toggleSolution.mutationOptions());
 
   const handleToggleSolution = useCallback(
     (checked: boolean) => {
@@ -349,7 +216,7 @@ export function SessionLiveView({
         );
       }, 5000);
     },
-    [toggleSolutionMutation, session.id],
+    [session.id, toggleSolutionMutation],
   );
 
   useEffect(() => {
@@ -360,33 +227,30 @@ export function SessionLiveView({
     };
   }, []);
 
-  useSubscription(
-    trpc.session.subscribe.subscriptionOptions(
-      {
-        sessionId: session.id,
-        afterSequence: initialAfterSequence,
-      },
-      {
-        async onData(event) {
-          setSessionState((current) => applyEvent(current, event));
+  const handleSessionEvent = useCallback(
+    async (event: SessionEvent) => {
+      setLifecycleState((current) => applyLifecycleEvent(current, event));
 
-          if (
-            event.type === "session.started" ||
-            event.type === "session.ended" ||
-            event.type === "session.failed"
-          ) {
-            await Promise.all([
-              queryClient.invalidateQueries({
-                queryKey: trpc.session.list.queryKey({ limit: 50 }),
-              }),
-              queryClient.invalidateQueries({
-                queryKey: trpc.session.byId.queryKey({ sessionId: session.id }),
-              }),
-            ]);
-          }
-        },
-      },
-    ),
+      if (event.type === "transcript.partial" || event.type === "transcript.final") {
+        setTranscriptLatestSequence((current) => Math.max(current, event.sequence));
+      }
+
+      if (
+        event.type === "session.started" ||
+        event.type === "session.ended" ||
+        event.type === "session.failed"
+      ) {
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: trpc.session.list.queryKey({ limit: 50 }),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.session.byId.queryKey({ sessionId: session.id }),
+          }),
+        ]);
+      }
+    },
+    [queryClient, session.id, trpc.session.byId, trpc.session.list],
   );
 
   const solutionSubscription = useSubscription(
@@ -396,171 +260,42 @@ export function SessionLiveView({
         afterVersion: initialAfterVersion,
       },
       {
-        async onData(event) {
+        onData(event) {
           setSolutionState((current) => applySolutionEvent(current, event));
         },
       },
     ),
   );
 
-  const latestFinalTranscriptSequence = useMemo(() => {
-    return sessionState.transcript.reduce(
-      (max, item) => (item.status === "final" ? Math.max(max, item.sequence) : max),
-      0,
-    );
-  }, [sessionState.transcript]);
-
   const isCatchingUp =
     solutionState.solution !== null &&
-    latestFinalTranscriptSequence > solutionState.solution.sourceEventSequence;
-
-  // Auto-scroll to bottom on new transcript entries
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [sessionState.transcript.length]);
+    transcriptLatestSequence > solutionState.solution.sourceEventSequence;
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b border-border/60 px-6 py-2.5">
-        <div className="flex items-center gap-3">
-          <h1 className="text-sm font-medium text-foreground">
-            {session.title}
-          </h1>
-          <span className="text-xs text-muted-foreground">
-            {getSessionTypeLabel(session.type)}
-            {session.type === "coding"
-              ? ` / ${getSessionLanguageLabel(session.language)}`
-              : null}
-          </span>
-          <Popover>
-            <PopoverTrigger asChild>
-              <button type="button" className="cursor-pointer">
-                <Badge
-                  variant={getStatusVariant(sessionState.status)}
-                  className="capitalize"
-                >
-                  {sessionState.status}
-                </Badge>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-60 p-3">
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[11px]">
-                <span className="text-muted-foreground/60">Created</span>
-                <span className="text-muted-foreground">{formatTimestamp(session.createdAt) ?? "-"}</span>
-
-                <span className="text-muted-foreground/60">
-                  {sessionState.startedAt ? "Started" : "Starts"}
-                </span>
-                <span className="text-muted-foreground">
-                  {sessionState.startedAt
-                    ? formatTimestamp(sessionState.startedAt) ?? "-"
-                    : "On first CLI connection"}
-                </span>
-
-                <span className="text-muted-foreground/60">
-                  {sessionState.status === "expired" ? "Expired" : "Expires"}
-                </span>
-                <span className="text-muted-foreground">
-                  {sessionState.expiresAt
-                    ? formatTimestamp(sessionState.expiresAt) ?? "-"
-                    : "1 hour after start"}
-                </span>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-            onClick={() => setCliDialogOpen(true)}
-          >
-            <Terminal className="h-3 w-3" />
-            CLI
-          </Button>
-        </div>
-      </header>
+      <SessionLiveHeader
+        session={session}
+        status={lifecycleState.status}
+        startedAt={lifecycleState.startedAt}
+        expiresAt={lifecycleState.expiresAt}
+        onOpenCli={() => setCliDialogOpen(true)}
+      />
 
       <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-        {/* Transcript */}
         <ResizablePanel defaultSize={50} minSize={25}>
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center justify-between border-b border-border/40 px-6 py-3">
-              <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Transcript
-              </p>
-              <span className="text-[11px] text-muted-foreground/60">
-                {sessionState.transcript.length > 0
-                  ? `${sessionState.transcript.length} utterances`
-                  : null}
-              </span>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {sessionState.transcript.length === 0 ? (
-                <div className="flex h-full items-center justify-center px-6">
-                  <p className="text-sm text-muted-foreground/60">
-                    Waiting for transcript...
-                  </p>
-                </div>
-              ) : (
-                <div className="px-6 py-5">
-                  <div className="space-y-4">
-                    {sessionState.transcript.map((entry) => {
-                      const label = getSpeakerLabel(
-                        session.type,
-                        entry.source,
-                        entry.speaker,
-                      );
-                      const isYou = entry.source === "mic";
-
-                      return (
-                        <div key={entry.id}>
-                          <div className="flex items-baseline gap-2">
-                            <span
-                              className={cn(
-                                "text-xs font-medium",
-                                isYou
-                                  ? "text-primary"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              {label}
-                            </span>
-                            <span className="font-mono text-[10px] text-muted-foreground/40">
-                              {formatTimecode(entry.startMs)}
-                            </span>
-                            {entry.status === "partial" && (
-                              <span className="text-[10px] text-muted-foreground/30 italic">
-                                ...
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className={cn(
-                              "mt-0.5 text-sm leading-relaxed",
-                              entry.status === "partial"
-                                ? "text-foreground/40 italic"
-                                : "text-foreground/85",
-                            )}
-                          >
-                            {entry.text}
-                          </p>
-                        </div>
-                      );
-                    })}
-                    <div ref={bottomRef} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <SessionTranscriptPane
+            sessionId={session.id}
+            sessionType={session.type}
+            initialLastSequence={initialLastSequence}
+            onLatestFinalSequenceChange={setTranscriptLatestSequence}
+            onEvent={(event) => {
+              void handleSessionEvent(event);
+            }}
+          />
         </ResizablePanel>
 
         <ResizableHandle withHandle />
 
-        {/* Solution */}
         <ResizablePanel defaultSize={50} minSize={25}>
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between border-b border-border/40 px-6 py-3">
@@ -574,14 +309,8 @@ export function SessionLiveView({
                   </span>
                 ) : null}
                 <label className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-muted-foreground/60">
-                    AI
-                  </span>
-                  <Switch
-                    size="sm"
-                    checked={solutionEnabled}
-                    onCheckedChange={handleToggleSolution}
-                  />
+                  <span className="text-[11px] text-muted-foreground/60">AI</span>
+                  <Switch size="sm" checked={solutionEnabled} onCheckedChange={handleToggleSolution} />
                 </label>
               </div>
             </div>

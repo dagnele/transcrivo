@@ -24,9 +24,9 @@ import {
 } from "@/lib/session-config";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
+import { SessionStatusBadge } from "@/components/sessions/session-status-badge";
 import {
   Dialog,
   DialogContent,
@@ -61,11 +61,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  formatCompactTimestamp,
-  formatTimestamp,
-  getStatusVariant,
-} from "@/lib/session-ui";
 
 type SessionsShellProps = {
   children: React.ReactNode;
@@ -380,7 +375,7 @@ export function SessionsShell({
                   <div
                     key={session.id}
                     className={cn(
-                      "group flex items-center rounded-md transition-colors",
+                      "group rounded-md transition-colors",
                       isActive
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
                         : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
@@ -388,77 +383,60 @@ export function SessionsShell({
                   >
                     <Link
                       href={`/sessions/${session.id}`}
-                      className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5"
+                      className="flex items-center gap-2 px-2.5 py-1.5"
                       onClick={closeSidebarOnMobile}
                     >
-                      <Hash className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <Hash className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="truncate text-sm">
+                          <p className="min-w-0 flex-1 truncate text-sm">
                             {session.title}
                           </p>
-                          <Badge
-                            variant={getStatusVariant(session.status)}
-                            className="ml-auto shrink-0 h-4 px-1 text-[10px] capitalize"
-                          >
-                            {session.status}
-                          </Badge>
+                          <SessionStatusBadge
+                            status={session.status}
+                            createdAt={session.createdAt}
+                            startedAt={session.startedAt}
+                            expiresAt={session.expiresAt}
+                            className="shrink-0 h-4 px-1 text-[10px] capitalize"
+                            popoverAlign="end"
+                          />
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+                              >
+                                <MoreHorizontal className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem
+                                onClick={() => setCliSession(session)}
+                              >
+                                <Terminal className="mr-2 h-3.5 w-3.5" />
+                                Connect via CLI
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openRename(session)}>
+                                <Pencil className="mr-2 h-3.5 w-3.5" />
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive"
+                                onClick={() => openDelete(session)}
+                              >
+                                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                          <span>{getSessionTypeLabel(session.type)}</span>
-                          {session.type === "coding" ? (
-                            <>
-                              <span className="text-border">/</span>
-                              <span>{getSessionLanguageLabel(session.language)}</span>
-                            </>
-                          ) : null}
-                          <span className="text-border">&middot;</span>
-                          <span>
-                            {formatCompactTimestamp(session.createdAt) ?? ""}
-                          </span>
-                          {session.expiresAt ? (
-                            <>
-                              <span className="text-border">&middot;</span>
-                              <span title={formatTimestamp(session.expiresAt) ?? undefined}>
-                                {session.status === "expired" ? "expired" : "expires"}{" "}
-                                {formatCompactTimestamp(session.expiresAt) ?? ""}
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          {getSessionTypeLabel(session.type)}
+                          {session.type === "coding" ? ` / ${getSessionLanguageLabel(session.language)}` : null}
+                        </span>
                       </div>
                     </Link>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="mr-1 h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
-                        >
-                          <MoreHorizontal className="h-3.5 w-3.5" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem
-                          onClick={() => setCliSession(session)}
-                        >
-                          <Terminal className="mr-2 h-3.5 w-3.5" />
-                          Connect via CLI
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openRename(session)}>
-                          <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Rename
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => openDelete(session)}
-                        >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
                   </div>
                 );
               })}

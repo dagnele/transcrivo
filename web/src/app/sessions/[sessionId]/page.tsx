@@ -23,8 +23,8 @@ export default async function SessionDetailPage({
   let session: Awaited<
     ReturnType<(Awaited<ReturnType<typeof getServerTRPCCaller>>)["session"]["byId"]>
   >;
-  let history: Awaited<
-    ReturnType<(Awaited<ReturnType<typeof getServerTRPCCaller>>)["session"]["history"]>
+  let latestSequence: Awaited<
+    ReturnType<(Awaited<ReturnType<typeof getServerTRPCCaller>>)["session"]["latestSequence"]>
   >;
   let solution: Awaited<
     ReturnType<(Awaited<ReturnType<typeof getServerTRPCCaller>>)["session"]["solution"]>
@@ -32,9 +32,9 @@ export default async function SessionDetailPage({
 
   try {
     const caller = await getServerTRPCCaller();
-    [session, history, solution] = await Promise.all([
+    [session, latestSequence, solution] = await Promise.all([
       caller.session.byId({ sessionId }),
-      caller.session.history({ sessionId }),
+      caller.session.latestSequence({ sessionId }),
       caller.session.solution({ sessionId }),
     ]);
   } catch (error) {
@@ -67,7 +67,7 @@ export default async function SessionDetailPage({
   return (
     <SessionLiveView
       session={session}
-      initialHistory={history}
+      initialLastSequence={latestSequence.lastSequence}
       initialSolution={solution}
     />
   );

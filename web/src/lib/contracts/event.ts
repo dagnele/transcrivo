@@ -52,6 +52,17 @@ export const sessionHistoryInputSchema = z.object({
   afterSequence: z.number().int().nonnegative().optional(),
 });
 
+export const sessionTranscriptPageInputSchema = z.object({
+  sessionId: sessionIdSchema,
+  cursor: z.number().int().nonnegative().optional(),
+  limit: z.number().int().min(1).max(50).default(50),
+});
+
+export const paginatedSessionTranscriptSchema = z.object({
+  items: z.array(sessionEventSchema),
+  nextCursor: z.number().int().nonnegative().nullable(),
+});
+
 export const ingestSessionEventInputSchema = z.object({
   sessionId: sessionIdSchema,
   type: sessionEventTypeSchema,

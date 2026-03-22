@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { AlertCircle, ChevronDown, ChevronUp, LoaderCircle, Sparkles } from "lucide-react";
+import { AlertCircle, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { ScrollNav } from "@/components/ui/scroll-nav";
 import type { SessionSolution } from "@/lib/contracts/solution";
 
 import { SolutionMarkdown } from "./solution-markdown";
@@ -103,35 +104,17 @@ export function SolutionPane({ state }: SolutionPaneProps) {
     setSectionIndex(nextIndex);
   };
 
-  const showSectionControls = hasRenderableSolution && sectionCount > 1;
+  const showSectionLabel = hasRenderableSolution && sectionCount > 1;
 
   return (
     <div className="relative flex h-full flex-col">
-      {showSectionControls ? (
-        <div className="pointer-events-none fixed right-5 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1 rounded-full bg-background/80 px-1 py-1.5 shadow-md ring-1 ring-border/40 backdrop-blur-sm">
-          <button
-            type="button"
-            className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-0"
-            aria-label="Go to previous section"
-            onClick={() => jumpToSection(-1)}
-            disabled={currentSectionIndex === 0}
-          >
-            <ChevronUp className="size-4" />
-          </button>
-          <span className="text-[10px] tabular-nums text-muted-foreground/40">
-            {currentSectionIndex + 1}/{sectionCount}
-          </span>
-          <button
-            type="button"
-            className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-0"
-            aria-label="Go to next section"
-            onClick={() => jumpToSection(1)}
-            disabled={currentSectionIndex >= sectionCount - 1}
-          >
-            <ChevronDown className="size-4" />
-          </button>
-        </div>
-      ) : null}
+      <ScrollNav
+        label={showSectionLabel ? `${currentSectionIndex + 1}/${sectionCount}` : undefined}
+        onUp={() => jumpToSection(-1)}
+        onDown={() => jumpToSection(1)}
+        upDisabled={currentSectionIndex === 0}
+        downDisabled={!hasRenderableSolution || currentSectionIndex >= sectionCount - 1}
+      />
 
       <div
         ref={scrollContainerRef}
@@ -139,28 +122,32 @@ export function SolutionPane({ state }: SolutionPaneProps) {
       >
         {state.status === "idle" ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <Sparkles className="h-5 w-5 text-muted-foreground/50" />
-            <p className="mt-4 text-sm text-muted-foreground">
+            <Sparkles className="h-4 w-4 text-muted-foreground/30" />
+            <p className="mt-3 text-xs text-muted-foreground/40">
               {state.solutionEnabled
-                ? "Solution will appear once the transcript begins."
-                : "AI generation is off. Turn it on to get a solution."}
+                ? "Waiting for transcript"
+                : "AI generation is off"}
             </p>
           </div>
         ) : null}
 
         {state.status === "generating" && !state.solution ? (
-          <div className="flex h-full flex-col items-center justify-center text-center">
-            <LoaderCircle className="h-5 w-5 animate-spin text-muted-foreground/60" />
-            <p className="mt-4 text-sm text-muted-foreground">
-              Generating...
-            </p>
+          <div className="flex h-full items-center justify-center">
+            <div className="flex gap-1">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
+            </div>
           </div>
         ) : null}
 
         {state.status === "generating" && hasRenderableSolution ? (
-          <div className="mb-6 flex items-center gap-2 text-xs text-muted-foreground">
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            <span>Refreshing...</span>
+          <div className="mb-6 flex justify-center">
+            <div className="flex gap-1">
+              <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40" />
+              <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
+              <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
+            </div>
           </div>
         ) : null}
 

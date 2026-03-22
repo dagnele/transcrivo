@@ -1,10 +1,12 @@
-import { and, asc, desc, eq, gt, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import {
+  paginatedSessionTranscriptSchema,
   sessionHistoryInputSchema,
   sessionEventSchema,
+  sessionTranscriptPageInputSchema,
 } from "@/lib/contracts/event";
 import {
   sessionSolutionHistoryInputSchema,
@@ -156,6 +158,33 @@ export const sessionRouter = createTRPCRouter({
       return sessionSchema.parse(session);
     }),
 
+  latestSequence: protectedProcedure
+    .input(sessionIdInputSchema)
+    .output(
+      z.object({
+        lastSequence: z.number().int().nonnegative(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const ownedSession = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!ownedSession) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Session not found." });
+      }
+
+      const latestEvent = await db.query.sessionEvents.findFirst({
+        where: eq(sessionEvents.sessionId, input.sessionId),
+        orderBy: desc(sessionEvents.sequence),
+        columns: { sequence: true },
+      });
+
+      return {
+        lastSequence: latestEvent?.sequence ?? 0,
+      };
+    }),
+
   solution: protectedProcedure
     .input(sessionSolutionInputSchema)
     .output(sessionSolutionSchema.nullable())
@@ -264,9 +293,9 @@ export const sessionRouter = createTRPCRouter({
       }
     }),
 
-  history: protectedProcedure
-    .input(sessionHistoryInputSchema)
-    .output(sessionEventSchema.array())
+  transcriptPage: protectedProcedure
+    .input(sessionTranscriptPageInputSchema)
+    .output(paginatedSessionTranscriptSchema)
     .query(async ({ ctx, input }) => {
       const ownedSession = await db.query.sessions.findFirst({
         where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
@@ -282,14 +311,21 @@ export const sessionRouter = createTRPCRouter({
         .where(
           and(
             eq(sessionEvents.sessionId, input.sessionId),
-            input.afterSequence !== undefined
-              ? gt(sessionEvents.sequence, input.afterSequence)
-              : undefined,
+            inArray(sessionEvents.type, ["transcript.partial", "transcript.final"]),
+            input.cursor !== undefined ? lt(sessionEvents.sequence, input.cursor) : undefined,
           ),
         )
-        .orderBy(asc(sessionEvents.sequence));
+        .orderBy(desc(sessionEvents.sequence))
+        .limit(input.limit + 1);
 
-      return sessionEventSchema.array().parse(items);
+      const hasMore = items.length > input.limit;
+      const pageItems = hasMore ? items.slice(0, input.limit) : items;
+      const oldestReturned = pageItems.at(-1);
+
+      return paginatedSessionTranscriptSchema.parse({
+        items: pageItems,
+        nextCursor: hasMore && oldestReturned ? oldestReturned.sequence : null,
+      });
     }),
 
   subscribe: protectedProcedure
