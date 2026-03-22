@@ -37,6 +37,7 @@ const sessionErrorPayloadSchema = z.object({
 
 const cliTranscriptPayloadSchema = z.object({
   event_id: z.string().min(1),
+  utterance_id: z.string().min(1).optional(),
   source: z.enum(["mic", "system"]),
   speaker: z.string().min(1),
   text: z.string().min(1),
@@ -136,7 +137,8 @@ export function toInternalSessionEvent(
     type: sessionEventTypeSchema.parse(envelope.type),
     payload: transcriptEventPayloadSchema.parse({
       eventId: payload.event_id,
-      utteranceId: payload.chunk_id ?? `${payload.source}:${payload.start_ms}:${payload.end_ms}`,
+      utteranceId:
+        payload.utterance_id ?? payload.chunk_id ?? `${payload.source}:${payload.start_ms}:${payload.end_ms}`,
       source: payload.source,
       speaker: payload.speaker,
       text: payload.text,

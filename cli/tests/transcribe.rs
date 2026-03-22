@@ -204,6 +204,12 @@ fn pipeline_flush_pending_finalizes_last_partial() {
     assert_eq!(final_messages.len(), 1);
     assert_eq!(final_messages[0].message_type, MessageType::TranscriptFinal);
     assert_eq!(final_messages[0].payload["text"], "closing thought");
+    assert_eq!(partial_messages[0].payload["chunk_id"], "System:0:500");
+    assert_eq!(final_messages[0].payload["chunk_id"], "System:0:500");
+    assert_eq!(
+        partial_messages[0].payload["utterance_id"],
+        final_messages[0].payload["utterance_id"]
+    );
 }
 
 #[test]
@@ -269,7 +275,7 @@ fn pipeline_keeps_device_id_when_finalizing_pending_utterance() {
 #[test]
 fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
-    let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system";
+    let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: text.to_string(),
         start_ms: 0,
@@ -302,8 +308,8 @@ fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
 #[test]
 fn pipeline_flushes_remainder_after_forced_cutoff() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
-    let sentence = "This is a deliberately long sentence that should be emitted as a final chunk when it reaches the cutoff because it ends with a period.";
-    let continuation = "This continuation should remain pending for the next partial update so the user still sees the next phrase taking shape in real time.";
+    let sentence = "This is a deliberately long sentence that should be emitted as a final chunk when it reaches the cutoff because it ends with a period and keeps going long enough to consume most of the allowed pending utterance budget before we hand off to the continuation.";
+    let continuation = "This continuation should remain pending for the next partial update so the user still sees the next phrase taking shape in real time while the pipeline preserves a clean boundary between the finalized sentence and the remaining live text.";
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: format!("{sentence} {continuation}"),
         start_ms: 0,
@@ -324,9 +330,107 @@ fn pipeline_flushes_remainder_after_forced_cutoff() {
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].payload["text"], sentence);
     assert_eq!(messages[1].payload["text"], continuation);
+    let final_start = messages[0].payload["start_ms"]
+        .as_u64()
+        .expect("final start");
+    let final_end = messages[0].payload["end_ms"].as_u64().expect("final end");
+    let partial_start = messages[1].payload["start_ms"]
+        .as_u64()
+        .expect("partial start");
+    let partial_end = messages[1].payload["end_ms"].as_u64().expect("partial end");
+    assert_eq!(
+        messages[0].payload["chunk_id"],
+        format!("System:{final_start}:{final_end}")
+    );
+    assert_eq!(
+        messages[1].payload["chunk_id"],
+        format!("System:{partial_start}:{partial_end}")
+    );
     assert_eq!(flushed.len(), 1);
     assert_eq!(flushed[0].message_type, MessageType::TranscriptFinal);
     assert_eq!(flushed[0].payload["text"], continuation);
+    assert_eq!(
+        flushed[0].payload["chunk_id"],
+        format!("System:{partial_start}:{partial_end}")
+    );
+}
+
+#[test]
+fn pipeline_uses_emitted_timing_for_chunk_id_after_cutoff() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: text.to_string(),
+        start_ms: 0,
+        end_ms: 3000,
+        confidence: Some(0.9),
+        language: Some("en".to_string()),
+        chunk_id: Some("system:0:3000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+        .expect("pipeline should transcribe");
+
+    assert_eq!(messages.len(), 2);
+    let final_start = messages[0].payload["start_ms"]
+        .as_u64()
+        .expect("final start");
+    let final_end = messages[0].payload["end_ms"].as_u64().expect("final end");
+    let partial_start = messages[1].payload["start_ms"]
+        .as_u64()
+        .expect("partial start");
+    let partial_end = messages[1].payload["end_ms"].as_u64().expect("partial end");
+
+    assert_eq!(
+        messages[0].payload["chunk_id"],
+        format!("System:{final_start}:{final_end}")
+    );
+    assert_eq!(
+        messages[1].payload["chunk_id"],
+        format!("System:{partial_start}:{partial_end}")
+    );
+    assert_eq!(final_end, partial_start);
+    assert_ne!(
+        messages[0].payload["utterance_id"],
+        messages[1].payload["utterance_id"]
+    );
+}
+
+#[test]
+fn pipeline_rotates_utterance_id_after_forced_cutoff_flush() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: text.to_string(),
+        start_ms: 0,
+        end_ms: 3000,
+        confidence: Some(0.9),
+        language: Some("en".to_string()),
+        chunk_id: Some("system:0:3000:0".to_string()),
+        is_partial: false,
+        meta: None,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
+
+    let messages = pipeline
+        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+        .expect("pipeline should transcribe");
+    let flushed = pipeline.flush_pending().expect("flush should work");
+
+    assert_eq!(messages.len(), 2);
+    assert_eq!(flushed.len(), 1);
+    assert_ne!(
+        messages[0].payload["utterance_id"],
+        messages[1].payload["utterance_id"]
+    );
+    assert_eq!(
+        messages[1].payload["utterance_id"],
+        flushed[0].payload["utterance_id"]
+    );
 }
 
 #[test]

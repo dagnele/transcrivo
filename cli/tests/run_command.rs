@@ -7,6 +7,7 @@ use cheatcode_cli_rs::commands::run::{
     validate_backend_url, validate_required_text, RunArgs, SelectedDevices,
 };
 use cheatcode_cli_rs::session::manager::SessionManager;
+use cheatcode_cli_rs::session::models::Source;
 
 #[test]
 fn backend_url_accepts_websocket_urls() {
@@ -123,4 +124,26 @@ fn build_transcription_config_preserves_gpu_options() {
     assert!(config.whisper_use_gpu);
     assert!(config.whisper_flash_attn);
     assert_eq!(config.whisper_gpu_device, 2);
+}
+
+#[test]
+fn build_transcription_config_defaults_are_source_agnostic() {
+    let args = RunArgs {
+        backend_url: Some("ws://localhost:8080/ws".to_string()),
+        token: Some("token".to_string()),
+        mic_device: None,
+        system_device: None,
+        whisper_model_name: None,
+        whisper_use_gpu: false,
+        whisper_flash_attn: false,
+        whisper_gpu_device: 0,
+    };
+
+    let config = build_transcription_config(&args);
+
+    assert_eq!(config.whisper_model_name, None);
+    assert!(!config.whisper_use_gpu);
+    assert!(!config.whisper_flash_attn);
+    assert_eq!(config.whisper_gpu_device, 0);
+    assert_ne!(Source::Mic, Source::System);
 }

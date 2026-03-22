@@ -95,20 +95,7 @@ impl PreprocessState {
         let mut output = Vec::new();
 
         while self.buffer.len() >= chunk_frames {
-            let samples: Vec<f32> = self.buffer.drain(..chunk_frames).collect();
-            let start_ms = frames_to_ms(self.processed_frames, self.config.target_sample_rate)?;
-            self.processed_frames += chunk_frames;
-            let end_ms = frames_to_ms(self.processed_frames, self.config.target_sample_rate)?;
-            output.push(AudioChunk {
-                source: self.source,
-                device_id: self.device_id.clone(),
-                sample_rate: self.config.target_sample_rate,
-                channels: self.config.target_channels,
-                start_ms,
-                end_ms,
-                frame_count: chunk_frames,
-                samples,
-            });
+            output.push(self.take_buffered_chunk(chunk_frames)?);
         }
 
         Ok(output)
@@ -119,12 +106,18 @@ impl PreprocessState {
             return Ok(None);
         }
 
-        let samples: Vec<f32> = self.buffer.drain(..).collect();
+        let chunk = self.take_buffered_chunk(self.buffer.len())?;
+
+        Ok(Some(chunk))
+    }
+
+    fn take_buffered_chunk(&mut self, frame_count: usize) -> Result<AudioChunk, PreprocessError> {
+        let samples: Vec<f32> = self.buffer.drain(..frame_count).collect();
         let start_ms = frames_to_ms(self.processed_frames, self.config.target_sample_rate)?;
         self.processed_frames += samples.len();
         let end_ms = frames_to_ms(self.processed_frames, self.config.target_sample_rate)?;
 
-        Ok(Some(AudioChunk {
+        Ok(AudioChunk {
             source: self.source,
             device_id: self.device_id.clone(),
             sample_rate: self.config.target_sample_rate,
@@ -133,7 +126,7 @@ impl PreprocessState {
             end_ms,
             frame_count: samples.len(),
             samples,
-        }))
+        })
     }
 }
 

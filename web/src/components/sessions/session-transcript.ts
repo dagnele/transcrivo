@@ -31,35 +31,43 @@ export function mergeTranscriptItem(
     return nextTranscript;
   }
 
-  const sameUtterance = (item: TranscriptItem) => item.utteranceId === nextItem.utteranceId;
+  const sameUtteranceIndex = transcript.findIndex(
+    (item) => item.utteranceId === nextItem.utteranceId,
+  );
 
-  const overlapsSameSource = (item: TranscriptItem) =>
+  if (sameUtteranceIndex >= 0) {
+    const nextTranscript = [...transcript];
+    nextTranscript[sameUtteranceIndex] = nextItem;
+    nextTranscript.sort((left, right) => left.sequence - right.sequence);
+    return nextTranscript;
+  }
+
+  const usesStableUtteranceId = nextItem.utteranceId.startsWith("utt_");
+
+  if (usesStableUtteranceId) {
+    const nextTranscript = [...transcript, nextItem];
+    nextTranscript.sort((left, right) => left.sequence - right.sequence);
+    return nextTranscript;
+  }
+
+  const overlapsSameSourcePartial = (item: TranscriptItem) =>
+    item.status === "partial" &&
     item.source === nextItem.source &&
     item.startMs <= nextItem.endMs &&
     item.endMs >= nextItem.startMs;
 
-  const overlapsSameSourcePartial = (item: TranscriptItem) =>
-    item.status === "partial" && overlapsSameSource(item);
-
-  const normalizedTranscript =
-    nextItem.status === "final"
-      ? transcript.filter((item) => !overlapsSameSourcePartial(item))
-      : transcript.filter(
-          (item) => item.status === "final" || (!sameUtterance(item) && !overlapsSameSourcePartial(item)),
-        );
-
-  const existingIndex = normalizedTranscript.findIndex(
-    (item) => item.status === "partial" && (sameUtterance(item) || overlapsSameSource(item)),
-  );
+  const existingIndex = transcript.findIndex(overlapsSameSourcePartial);
 
   if (existingIndex >= 0) {
-    normalizedTranscript[existingIndex] = nextItem;
+    const nextTranscript = [...transcript];
+    nextTranscript[existingIndex] = nextItem;
+    nextTranscript.sort((left, right) => left.sequence - right.sequence);
+    return nextTranscript;
   } else {
-    normalizedTranscript.push(nextItem);
+    const nextTranscript = [...transcript, nextItem];
+    nextTranscript.sort((left, right) => left.sequence - right.sequence);
+    return nextTranscript;
   }
-
-  normalizedTranscript.sort((left, right) => left.sequence - right.sequence);
-  return normalizedTranscript;
 }
 
 export function isTranscriptEvent(event: SessionEvent) {

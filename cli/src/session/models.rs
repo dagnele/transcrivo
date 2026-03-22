@@ -172,6 +172,7 @@ impl SessionErrorPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TranscriptEvent {
     pub event_id: String,
+    pub utterance_id: String,
     pub sequence: u64,
     #[serde(rename = "type")]
     pub event_type: TranscriptMessageType,
@@ -199,6 +200,10 @@ impl TranscriptEvent {
     pub fn validate(&self) -> Result<(), String> {
         if self.text.trim().is_empty() {
             return Err("Transcript text must be non-empty".to_string());
+        }
+
+        if self.utterance_id.trim().is_empty() {
+            return Err("Transcript utterance_id must be non-empty".to_string());
         }
 
         if self.end_ms < self.start_ms {

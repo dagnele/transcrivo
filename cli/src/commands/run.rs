@@ -8,7 +8,10 @@ use tracing::{debug, error, info, warn};
 
 use crate::audio::capture::{AudioCaptureWorker, CaptureSource, PcmChunk, SourceCaptures};
 use crate::audio::open_default_source_captures;
-use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
+use crate::audio::preprocess::{
+    downmix_to_mono, frames_to_ms, pcm16le_to_f32, resample_audio, AudioChunk,
+    PreprocessConfig, PreprocessState,
+};
 use crate::audio::vad::{should_keep_chunk, VadConfig};
 use crate::commands::models::{ensure_model_downloaded, validate_model_name};
 use crate::session::manager::SessionManager;
@@ -27,9 +30,10 @@ use crate::util::whisper_log;
 const SESSION_EXPIRED_ERROR_CODE: &str = "session_expired";
 const SESSION_CLOSED_ERROR_CODE: &str = "session_closed";
 
-const LIVE_SILENCE_HOLD_MS: u64 = 750;
-const LIVE_SILENCE_MIN_RMS: f32 = 0.01;
-const TRANSCRIPTION_CHUNK_MS: u32 = 3_000;
+const LIVE_SILENCE_HOLD_MS: u64 = 1_000;
+const LIVE_MIC_MIN_RMS: f32 = 0.0025;
+const LIVE_SYSTEM_MIN_RMS: f32 = 0.01;
+const TRANSCRIPTION_CHUNK_MS: u32 = 5_000;
 const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const BACKEND_MESSAGE_POLL_TIMEOUT: Duration = Duration::from_millis(10);
 const CAPTURE_CHANNEL_CAPACITY: usize = 256;
@@ -44,10 +48,9 @@ enum CaptureEvent {
 }
 
 #[derive(Debug)]
-struct InferenceRequest {
-    chunk: AudioChunk,
-    source: Source,
-    is_speech: bool,
+enum InferenceRequest {
+    Audio(AudioChunk),
+    Finalize,
 }
 
 #[derive(Debug)]
@@ -61,6 +64,7 @@ struct SourceRuntime {
     source: Source,
     preprocess: PreprocessState,
     inference_tx: mpsc::Sender<InferenceRequest>,
+    silence_tracker: SilenceTracker,
 }
 
 #[derive(Debug, Default)]
@@ -354,7 +358,6 @@ where
         ) -> Result<WhisperCppAdapter, TranscriptionError>
         + Copy,
 {
-    let preprocess_config = transcription_preprocess_config();
     let shared_session = Arc::new(session.clone());
 
     info!("live stream start");
@@ -399,9 +402,10 @@ where
                 preprocess: PreprocessState::new(
                     capture_source,
                     device_id,
-                    preprocess_config.clone(),
+                    transcription_preprocess_config(source),
                 ),
                 inference_tx,
+                silence_tracker: SilenceTracker::new(LIVE_SILENCE_HOLD_MS),
             },
         );
         inference_tasks.push(tokio::spawn(inference_worker(
@@ -545,14 +549,34 @@ pub async fn process_transcription_outputs(
 }
 
 fn process_capture_chunk(source_runtime: &mut SourceRuntime, chunk: PcmChunk) -> Result<()> {
+    let preview = preview_audio_chunk(&source_runtime.preprocess, &chunk)?;
+    let vad_config = live_vad_config(source_runtime.source);
+    let is_speech = should_keep_chunk(&preview.samples, &vad_config);
+    let chunk_duration_ms = preview.end_ms.saturating_sub(preview.start_ms);
+
     for output in source_runtime.preprocess.process(&chunk)? {
-        let is_speech = should_keep_chunk(&output.samples, &live_vad_config());
+        let start_ms = output.start_ms;
+        let end_ms = output.end_ms;
         enqueue_inference_request(
             &source_runtime.inference_tx,
-            output,
+            InferenceRequest::Audio(output),
             source_runtime.source,
-            is_speech,
+            start_ms,
+            end_ms,
         )?;
+    }
+
+    if source_runtime.silence_tracker.observe(is_speech, chunk_duration_ms) {
+        enqueue_inference_request(
+            &source_runtime.inference_tx,
+            InferenceRequest::Finalize,
+            source_runtime.source,
+            preview.start_ms,
+            preview.end_ms,
+        )?;
+        source_runtime.silence_tracker.reset();
+    } else if is_speech {
+        source_runtime.silence_tracker.reset();
     }
 
     Ok(())
@@ -560,22 +584,53 @@ fn process_capture_chunk(source_runtime: &mut SourceRuntime, chunk: PcmChunk) ->
 
 fn flush_source_runtime(source_runtime: &mut SourceRuntime) -> Result<()> {
     if let Some(flushed) = source_runtime.preprocess.flush()? {
-        let is_speech = should_keep_chunk(&flushed.samples, &live_vad_config());
+        let start_ms = flushed.start_ms;
+        let end_ms = flushed.end_ms;
         enqueue_inference_request(
             &source_runtime.inference_tx,
-            flushed,
+            InferenceRequest::Audio(flushed),
             source_runtime.source,
-            is_speech,
+            start_ms,
+            end_ms,
         )?;
     }
+
+    enqueue_inference_request(
+        &source_runtime.inference_tx,
+        InferenceRequest::Finalize,
+        source_runtime.source,
+        0,
+        0,
+    )?;
 
     Ok(())
 }
 
-fn live_vad_config() -> VadConfig {
+fn preview_audio_chunk(preprocess: &PreprocessState, chunk: &PcmChunk) -> Result<AudioChunk> {
+    let frames = pcm16le_to_f32(&chunk.pcm, chunk.channels)?;
+    let mono = downmix_to_mono(&frames);
+    let samples = resample_audio(&mono, chunk.sample_rate, preprocess.config.target_sample_rate)?;
+    let duration_ms = frames_to_ms(samples.len(), preprocess.config.target_sample_rate)?;
+
+    Ok(AudioChunk {
+        source: chunk.source,
+        device_id: chunk.device_id.clone(),
+        sample_rate: preprocess.config.target_sample_rate,
+        channels: preprocess.config.target_channels,
+        start_ms: 0,
+        end_ms: duration_ms,
+        frame_count: samples.len(),
+        samples,
+    })
+}
+
+fn live_vad_config(source: Source) -> VadConfig {
     VadConfig {
         enabled: true,
-        min_rms: LIVE_SILENCE_MIN_RMS,
+        min_rms: match source {
+            Source::Mic => LIVE_MIC_MIN_RMS,
+            Source::System => LIVE_SYSTEM_MIN_RMS,
+        },
     }
 }
 
@@ -648,41 +703,34 @@ async fn inference_worker(
     mut request_rx: mpsc::Receiver<InferenceRequest>,
     result_tx: mpsc::Sender<InferenceResult>,
 ) {
-    let mut silence_tracker = SilenceTracker::new(LIVE_SILENCE_HOLD_MS);
-
     while let Some(request) = request_rx.recv().await {
-        let mut messages = match pipeline.transcribe_chunk_async(&request.chunk).await {
-            Ok(messages) => messages,
-            Err(TranscriptionError::Aborted) => break,
-            Err(error) => {
-                error!(
-                    source = ?request.source,
-                    start_ms = request.chunk.start_ms,
-                    end_ms = request.chunk.end_ms,
-                    error = %error,
-                    "live inference failed"
-                );
-                continue;
-            }
-        };
+        let mut messages = Vec::new();
 
-        if pipeline.has_pending()
-            && silence_tracker.observe(
-                request.is_speech,
-                request.chunk.end_ms.saturating_sub(request.chunk.start_ms),
-            )
-        {
-            match pipeline.flush_pending() {
-                Ok(flushed) => {
-                    messages.extend(flushed);
-                    silence_tracker.reset();
-                }
+        match request {
+            InferenceRequest::Audio(chunk) => match pipeline.transcribe_chunk_async(&chunk).await {
+                Ok(chunk_messages) => messages.extend(chunk_messages),
+                Err(TranscriptionError::Aborted) => break,
                 Err(error) => {
-                    error!(source = ?request.source, error = %error, "live pipeline flush failed");
+                    error!(
+                        source = ?source,
+                        start_ms = chunk.start_ms,
+                        end_ms = chunk.end_ms,
+                        error = %error,
+                        "live inference failed"
+                    );
+                }
+            },
+            InferenceRequest::Finalize => {
+                if pipeline.has_pending() {
+                    debug!(source = ?source, "finalizing pending transcript utterance");
+                    match pipeline.flush_pending() {
+                        Ok(flushed) => messages.extend(flushed),
+                        Err(error) => {
+                            error!(source = ?source, error = %error, "live pipeline flush failed");
+                        }
+                    }
                 }
             }
-        } else if request.is_speech {
-            silence_tracker.reset();
         }
 
         if result_tx
@@ -723,18 +771,12 @@ async fn send_inference_result(
 
 fn enqueue_inference_request(
     inference_tx: &mpsc::Sender<InferenceRequest>,
-    chunk: AudioChunk,
+    request: InferenceRequest,
     source: Source,
-    is_speech: bool,
+    start_ms: u64,
+    end_ms: u64,
 ) -> Result<()> {
-    let start_ms = chunk.start_ms;
-    let end_ms = chunk.end_ms;
-
-    match inference_tx.try_send(InferenceRequest {
-        chunk,
-        source,
-        is_speech,
-    }) {
+    match inference_tx.try_send(request) {
         Ok(()) => Ok(()),
         Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
             warn!(source = ?source, start_ms, end_ms, "dropping live transcription chunk because inference queue is full");
@@ -845,11 +887,31 @@ fn build_interruptible_transcription_adapter(
     }
 }
 
-fn transcription_preprocess_config() -> PreprocessConfig {
+fn transcription_preprocess_config(_source: Source) -> PreprocessConfig {
     PreprocessConfig {
         chunk_duration_ms: TRANSCRIPTION_CHUNK_MS,
         ..PreprocessConfig::default()
     }
+}
+
+#[cfg(test)]
+fn samples_to_pcm_chunk(chunk: &AudioChunk) -> Result<PcmChunk> {
+    let pcm = chunk
+        .samples
+        .iter()
+        .map(|sample| (sample.clamp(-1.0, 1.0) * 32767.0) as i16)
+        .flat_map(i16::to_le_bytes)
+        .collect::<Vec<_>>();
+
+    Ok(PcmChunk {
+        source: chunk.source,
+        device_id: chunk.device_id.clone(),
+        sample_rate: chunk.sample_rate,
+        channels: chunk.channels,
+        frame_count: u32::try_from(chunk.frame_count)
+            .map_err(|_| anyhow::anyhow!("audio chunk frame count exceeds u32"))?,
+        pcm,
+    })
 }
 
 fn shutdown_reason_for_error(error: &anyhow::Error) -> String {
@@ -901,7 +963,11 @@ fn is_terminal_session_error_code(code: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{should_send_session_stop, shutdown_reason_for_error};
+    use super::{preview_audio_chunk, should_send_session_stop, shutdown_reason_for_error, samples_to_pcm_chunk};
+    use crate::audio::capture::CaptureSource;
+    use crate::audio::capture::PcmChunk;
+    use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
+    use crate::session::models::Source;
     use crate::transport::BackendSessionError;
 
     #[test]
@@ -934,5 +1000,47 @@ mod tests {
 
         assert_eq!(shutdown_reason_for_error(&error), "backend_error");
         assert!(!should_send_session_stop(Some("backend_error")));
+    }
+
+    #[test]
+    fn samples_to_pcm_chunk_preserves_basic_shape() {
+        let chunk = AudioChunk {
+            source: CaptureSource::Mic,
+            device_id: "mic-1".to_string(),
+            sample_rate: 16_000,
+            channels: 1,
+            start_ms: 0,
+            end_ms: 500,
+            frame_count: 3,
+            samples: vec![0.0, 0.5, -0.5],
+        };
+
+        let pcm = samples_to_pcm_chunk(&chunk).expect("pcm conversion should work");
+
+        assert_eq!(pcm.source, CaptureSource::Mic);
+        assert_eq!(pcm.device_id, "mic-1");
+        assert_eq!(pcm.sample_rate, 16_000);
+        assert_eq!(pcm.channels, 1);
+        assert_eq!(pcm.frame_count, 3);
+        assert_eq!(pcm.pcm.len(), 6);
+    }
+
+    #[test]
+    fn preview_audio_chunk_matches_resampled_duration() {
+        let preprocess = PreprocessState::new(CaptureSource::Mic, "mic-1", PreprocessConfig::default());
+        let pcm = PcmChunk {
+            source: CaptureSource::Mic,
+            device_id: "mic-1".to_string(),
+            sample_rate: 48_000,
+            channels: 2,
+            frame_count: 24_000,
+            pcm: vec![0_u8; 24_000 * 2 * 2],
+        };
+
+        let preview = preview_audio_chunk(&preprocess, &pcm).expect("preview should work");
+
+        assert_eq!(preview.sample_rate, 16_000);
+        assert_eq!(preview.channels, 1);
+        assert_eq!(preview.end_ms, 500);
     }
 }

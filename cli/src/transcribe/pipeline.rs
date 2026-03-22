@@ -8,9 +8,11 @@ use crate::session::manager::SessionManager;
 use crate::session::models::{Source, TranscriptMessageType};
 use crate::transcribe::whisper_cpp::{TranscriptSegment, TranscriptionError, WhisperCppAdapter};
 use crate::transport::protocol::MessageEnvelope;
+use crate::util::ids::new_utterance_id;
 
 #[derive(Debug, Clone, PartialEq)]
 struct PendingUtterance {
+    utterance_id: String,
     text: String,
     start_ms: u64,
     end_ms: u64,
@@ -176,6 +178,7 @@ impl TranscriptPipeline {
             };
             let message = self.session.create_transcript_message(
                 event_type,
+                Some(new_utterance_id()),
                 self.source,
                 segment.text.clone(),
                 segment.start_ms,
@@ -183,7 +186,7 @@ impl TranscriptPipeline {
                 segment.confidence,
                 segment.language.clone(),
                 Some(chunk.device_id.clone()),
-                segment.chunk_id.clone(),
+                Some(self.emitted_chunk_id(segment.start_ms, segment.end_ms)),
                 None,
                 segment.meta.clone(),
             )?;
@@ -218,6 +221,7 @@ impl TranscriptPipeline {
         let combined = combine_segments(chunk, &meaningful_segments);
         if let Some(pending) = &self.pending_utterance {
             self.pending_utterance = Some(PendingUtterance {
+                utterance_id: pending.utterance_id.clone(),
                 text: merge_text(&pending.text, &combined.text),
                 start_ms: pending.start_ms.min(combined.start_ms),
                 end_ms: pending.end_ms.max(combined.end_ms),
@@ -256,6 +260,7 @@ impl TranscriptPipeline {
         self.last_partial_text = Some(current.text.clone());
         let message = self.session.create_transcript_message(
             TranscriptMessageType::Partial,
+            Some(current.utterance_id.clone()),
             self.source,
             current.text.clone(),
             current.start_ms,
@@ -266,7 +271,7 @@ impl TranscriptPipeline {
                 .device_id
                 .clone()
                 .or_else(|| Some(chunk.device_id.clone())),
-            current.chunk_id.clone(),
+            Some(self.emitted_chunk_id(current.start_ms, current.end_ms)),
             None,
             current.meta.clone(),
         )?;
@@ -305,6 +310,7 @@ impl TranscriptPipeline {
     ) -> Result<MessageEnvelope, TranscriptionError> {
         Ok(self.session.create_transcript_message(
             event_type,
+            Some(pending.utterance_id.clone()),
             self.source,
             pending.text.clone(),
             pending.start_ms,
@@ -312,10 +318,17 @@ impl TranscriptPipeline {
             pending.confidence,
             pending.language.clone(),
             pending.device_id.clone(),
-            pending.chunk_id.clone(),
+            Some(self.emitted_chunk_id(pending.start_ms, pending.end_ms)),
             None,
             pending.meta.clone(),
         )?)
+    }
+
+    fn emitted_chunk_id(&self, start_ms: u64, end_ms: u64) -> String {
+        format!(
+            "{}:{start_ms}:{end_ms}",
+            self.source.speaker_label().as_str()
+        )
     }
 
     fn force_finalize_overlong_pending(
@@ -367,6 +380,7 @@ fn split_pending_utterance(
     );
 
     let finalized = PendingUtterance {
+        utterance_id: pending.utterance_id.clone(),
         text: cut.finalized_text,
         start_ms: pending.start_ms,
         end_ms: split_ms,
@@ -377,6 +391,7 @@ fn split_pending_utterance(
         meta: pending.meta.clone(),
     };
     let remainder = cut.remainder_text.map(|text| PendingUtterance {
+        utterance_id: new_utterance_id(),
         text,
         start_ms: split_ms,
         end_ms: pending.end_ms,
@@ -430,6 +445,7 @@ fn combine_segments(chunk: &AudioChunk, segments: &[TranscriptSegment]) -> Pendi
     };
 
     PendingUtterance {
+        utterance_id: new_utterance_id(),
         text,
         start_ms: first.start_ms,
         end_ms: last.end_ms,

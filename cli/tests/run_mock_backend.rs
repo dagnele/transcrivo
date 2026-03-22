@@ -81,6 +81,7 @@ fn session_manager_builds_start_transcript_and_stop_messages() {
     let transcript_message = manager
         .create_transcript_message(
             TranscriptMessageType::Final,
+            None,
             Source::System,
             "Can you optimize that approach?".to_string(),
             18_320,
@@ -116,6 +117,10 @@ fn session_manager_builds_start_transcript_and_stop_messages() {
         .as_str()
         .expect("event id should be a string")
         .starts_with("evt_"));
+    assert!(transcript_message.payload["utterance_id"]
+        .as_str()
+        .expect("utterance id should be a string")
+        .starts_with("utt_"));
 
     assert_eq!(stop_message.sequence, 3);
     assert_eq!(stop_message.message_type, MessageType::SessionStop);
@@ -172,6 +177,7 @@ fn empty_transcript_text_is_rejected() {
     let error = manager
         .create_transcript_message(
             TranscriptMessageType::Final,
+            None,
             Source::Mic,
             "   ".to_string(),
             0,

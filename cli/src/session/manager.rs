@@ -9,7 +9,7 @@ use crate::session::models::{
 };
 use crate::session::sequence::Sequence;
 use crate::transport::protocol::{MessageEnvelope, MessageType, ProtocolError};
-use crate::util::ids::new_event_id;
+use crate::util::ids::{new_event_id, new_utterance_id};
 use crate::util::time::SessionClock;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,6 +79,7 @@ impl SessionManager {
     pub fn create_transcript_message(
         &self,
         event_type: TranscriptMessageType,
+        utterance_id: Option<String>,
         source: Source,
         text: String,
         start_ms: u64,
@@ -93,6 +94,7 @@ impl SessionManager {
         let sequence = self.sequence.next();
         let event = TranscriptEvent {
             event_id: new_event_id(),
+            utterance_id: utterance_id.unwrap_or_else(new_utterance_id),
             sequence,
             event_type,
             source,
