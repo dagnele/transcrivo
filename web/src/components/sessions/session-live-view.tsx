@@ -28,7 +28,7 @@ import {
   type SessionSolution,
   type SessionSolutionEvent,
 } from "@/lib/contracts/solution";
-import type { Session, SessionStatus } from "@/lib/contracts/session";
+import type { Session, SessionStatus, SessionType } from "@/lib/contracts/session";
 import {
   formatTimestamp,
   formatTimecode,
@@ -189,9 +189,15 @@ function buildInitialState(
   );
 }
 
-function getSpeakerLabel(source: string, speaker: string) {
+function getSystemSpeakerLabel(sessionType: SessionType) {
+  if (sessionType === "writing") return "Reference";
+  if (sessionType === "meeting_summary") return "Participant";
+  return "Interviewer";
+}
+
+function getSpeakerLabel(sessionType: SessionType, source: string, speaker: string) {
   if (source === "mic") return "You";
-  if (source === "system") return "Interviewer";
+  if (source === "system") return getSystemSpeakerLabel(sessionType);
   return speaker;
 }
 
@@ -502,7 +508,11 @@ export function SessionLiveView({
                 <div className="px-6 py-5">
                   <div className="space-y-4">
                     {sessionState.transcript.map((entry) => {
-                      const label = getSpeakerLabel(entry.source, entry.speaker);
+                      const label = getSpeakerLabel(
+                        session.type,
+                        entry.source,
+                        entry.speaker,
+                      );
                       const isYou = entry.source === "mic";
 
                       return (
