@@ -5,6 +5,7 @@
 /web/node_modules/
 /web/.next/
 /web/tsconfig.tsbuildinfo
+/web/logs/
 
 # Local environment files
 /web/.env.local

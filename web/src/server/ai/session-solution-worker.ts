@@ -17,6 +17,9 @@ import {
   sessionSolutions,
   sessions,
 } from "@/server/db/schema";
+import { createLogger } from "@/server/logger";
+
+const logger = createLogger("session-solution-worker");
 
 const DEBOUNCE_MS = 4000;
 
@@ -229,10 +232,7 @@ export function scheduleSessionSolutionGeneration(
   state.timer = setTimeout(() => {
     state.timer = null;
     void runGeneration(sessionId, state.latestRequestedSequence).catch((error) => {
-      console.error("Session solution generation failed", {
-        sessionId,
-        error,
-      });
+      logger.error({ sessionId, err: error }, "Session solution generation failed");
     });
   }, DEBOUNCE_MS);
 }

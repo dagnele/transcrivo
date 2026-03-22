@@ -20,6 +20,7 @@ import {
   assertSessionAcceptsCliTraffic,
   calculateSessionExpiresAt,
 } from "@/server/session-lifecycle";
+import { transcriptionLogger } from "@/server/logger";
 
 function getNextSessionStatus(
   currentStatus: SessionStatus,
@@ -63,6 +64,7 @@ export async function ingestSessionEvent(input: unknown) {
     parsedInput.data.type === "session.started"
       ? session
       : await assertSessionAcceptsCliTraffic(session);
+  const now = new Date();
 
   if (
     (parsedInput.data.type === "transcript.partial" ||
@@ -75,6 +77,21 @@ export async function ingestSessionEvent(input: unknown) {
     });
   }
 
+  if (
+    parsedInput.data.type === "transcript.partial" ||
+    parsedInput.data.type === "transcript.final"
+  ) {
+    transcriptionLogger?.debug(
+      {
+        sessionId: parsedInput.data.sessionId,
+        eventType: parsedInput.data.type,
+        transcript: parsedInput.data.payload,
+        receivedAt: now.toISOString(),
+      },
+      "Transcript event received",
+    );
+  }
+
   const latestEvent = await db.query.sessionEvents.findFirst({
     where: eq(sessionEvents.sessionId, parsedInput.data.sessionId),
     orderBy: desc(sessionEvents.sequence),
@@ -84,7 +101,6 @@ export async function ingestSessionEvent(input: unknown) {
     Math.max(latestEvent?.sequence ?? 0, getLastPublishedSessionSequence(parsedInput.data.sessionId)) + 1;
 
   const isPartialEvent = parsedInput.data.type === "transcript.partial";
-  const now = new Date();
 
   const event = isPartialEvent
     ? {

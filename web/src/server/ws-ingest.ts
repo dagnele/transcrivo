@@ -16,7 +16,18 @@ import {
   SessionStateError,
 } from "@/server/session-lifecycle";
 import { verifySessionToken, TokenError, type TokenPayload } from "@/server/token";
+import { createLogger, websocketDebugLoggingEnabled } from "@/server/logger";
 import { and, eq } from "drizzle-orm";
+
+const logger = createLogger("ws-ingest");
+
+function logWebSocketDebug(bindings: Record<string, unknown>, message: string) {
+  if (!websocketDebugLoggingEnabled) {
+    return;
+  }
+
+  logger.debug(bindings, message);
+}
 
 function sendJson(socket: import("ws").WebSocket, payload: object) {
   socket.send(JSON.stringify(payload));
@@ -94,6 +105,7 @@ function closeSocketWithError(socket: WebSocket, message: string, code?: string)
 export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
   webSocketServer.on("connection", (socket, request: IncomingMessage) => {
     const path = request.url ?? "";
+    logWebSocketDebug({ path }, "WebSocket connection opened");
 
     if (!path.startsWith("/ws")) {
       socket.close(1008, "Unsupported websocket path");
@@ -149,6 +161,7 @@ export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
     };
 
     socket.on("close", () => {
+      logWebSocketDebug({ sessionId: authenticatedSessionId }, "WebSocket connection closed");
       clearExpirationTimer();
     });
 
@@ -163,8 +176,15 @@ export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
           return;
         }
 
-        const decoded = JSON.parse(parseRawMessage(rawMessage));
+        const raw = parseRawMessage(rawMessage);
+        logWebSocketDebug({ sessionId, raw }, "Received raw WebSocket message");
+
+        const decoded = JSON.parse(raw);
         const envelope = cliOutboundEnvelopeSchema.parse(decoded);
+        logWebSocketDebug(
+          { sessionId, type: envelope.type, sequence: envelope.sequence },
+          "Parsed WebSocket envelope",
+        );
 
         if (envelope.type === "session.start") {
           try {
@@ -210,6 +230,7 @@ export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
         const message = error instanceof Error ? error.message : "Invalid websocket message";
         const code = error instanceof SessionStateError ? error.code : "protocol_error";
 
+        logger.warn({ sessionId: authenticatedSessionId, err: error }, "WebSocket message handling failed");
         sendJson(socket, createSessionErrorEnvelope(message, code));
 
         if (error instanceof SessionStateError && error.code === "session_expired") {
@@ -284,6 +305,7 @@ export function attachCliWebSocketHandlers(webSocketServer: WebSocketServer) {
 
       authenticatedSessionId = tokenPayload.sid;
       authCompleted = true;
+      logWebSocketDebug({ sessionId: authenticatedSessionId }, "WebSocket authentication succeeded");
       armExpirationTimer(authenticatedSession?.expiresAt ?? null);
       await processQueuedMessages();
     })();

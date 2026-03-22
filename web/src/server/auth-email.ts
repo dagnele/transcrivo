@@ -1,3 +1,7 @@
+import { createLogger } from "@/server/logger";
+
+const logger = createLogger("auth-email");
+
 type VerificationEmailInput = {
   email: string;
   otp: string;
@@ -54,8 +58,9 @@ export async function sendVerificationEmail(input: VerificationEmailInput) {
 
   if (!resendApiKey || !from) {
     if (process.env.NODE_ENV !== "production") {
-      console.info(
-        `[auth-email] ${input.type} OTP for ${input.email}: ${input.otp}`,
+      logger.info(
+        { email: input.email, otp: input.otp, type: input.type },
+        "Using development email fallback",
       );
       return;
     }

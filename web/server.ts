@@ -2,8 +2,16 @@ import { createServer } from "http";
 import next from "next";
 import type { WebSocket } from "ws";
 
+import {
+  createLogger,
+  transcriptionDebugFileEnabled,
+  transcriptionLogPath,
+  websocketDebugLoggingEnabled,
+} from "./src/server/logger";
 import { reconcileExpiredSessions } from "./src/server/session-lifecycle";
 import { attachCliWebSocketHandlers, createCliWebSocketServer } from "./src/server/ws-ingest";
+
+const logger = createLogger("server");
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOSTNAME ?? "0.0.0.0";
@@ -25,7 +33,7 @@ async function runExpiredSessionReconciliation() {
   const expiredSessionCount = await reconcileExpiredSessions();
 
   if (expiredSessionCount > 0) {
-    console.log(`> Reconciled ${expiredSessionCount} expired session${expiredSessionCount === 1 ? "" : "s"}`);
+    logger.info({ expiredSessionCount }, "Reconciled expired sessions");
   }
 }
 
@@ -33,12 +41,20 @@ app.prepare().then(async () => {
   try {
     await runExpiredSessionReconciliation();
   } catch (error: unknown) {
-    console.error("> Failed to reconcile expired sessions during startup", error);
+    logger.error({ err: error }, "Failed to reconcile expired sessions during startup");
+  }
+
+  if (transcriptionDebugFileEnabled) {
+    logger.info({ path: transcriptionLogPath }, "Transcription debug logging enabled");
+  }
+
+  if (websocketDebugLoggingEnabled) {
+    logger.info("WebSocket debug logging enabled");
   }
 
   const reconciliationInterval = setInterval(() => {
     void runExpiredSessionReconciliation().catch((error: unknown) => {
-      console.error("> Failed to reconcile expired sessions", error);
+      logger.error({ err: error }, "Failed to reconcile expired sessions");
     });
   }, SESSION_RECONCILIATION_INTERVAL_MS);
   reconciliationInterval.unref?.();
@@ -61,6 +77,6 @@ app.prepare().then(async () => {
   });
 
   httpServer.listen(port, hostname, () => {
-    console.log(`> Server listening at http://${hostname}:${port} (${dev ? "dev" : "prod"})`);
+    logger.info({ hostname, port, mode: dev ? "dev" : "prod" }, "Server listening");
   });
 });
