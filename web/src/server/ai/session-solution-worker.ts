@@ -110,6 +110,10 @@ async function runGeneration(sessionId: string, requestedSequence: number) {
         format: "markdown",
         sourceEventSequence: requestedSequence,
         createdAt: generatedAt,
+        provider: null,
+        model: null,
+        promptVersion: null,
+        meta: null,
       }),
     });
 
@@ -147,10 +151,10 @@ async function runGeneration(sessionId: string, requestedSequence: number) {
           content: persisted.content,
           sourceEventSequence: persisted.sourceEventSequence,
           createdAt: persisted.createdAt,
-          provider: persisted.provider ?? undefined,
-          model: persisted.model ?? undefined,
-          promptVersion: persisted.promptVersion ?? undefined,
-          meta: persisted.meta ?? undefined,
+          provider: persisted.provider ?? null,
+          model: persisted.model ?? null,
+          promptVersion: persisted.promptVersion ?? null,
+          meta: persisted.meta ?? null,
         }),
       });
     } catch (error) {
@@ -187,10 +191,10 @@ async function runGeneration(sessionId: string, requestedSequence: number) {
           sourceEventSequence: persisted.sourceEventSequence,
           createdAt: persisted.createdAt,
           errorMessage: persisted.errorMessage ?? message,
-          provider: persisted.provider ?? undefined,
-          model: persisted.model ?? undefined,
-          promptVersion: persisted.promptVersion ?? undefined,
-          meta: persisted.meta ?? undefined,
+          provider: persisted.provider ?? null,
+          model: persisted.model ?? null,
+          promptVersion: persisted.promptVersion ?? null,
+          meta: persisted.meta ?? null,
         }),
       });
     }

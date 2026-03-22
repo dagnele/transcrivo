@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, lte } from "drizzle-orm";
 import { generateRecordId } from "@/lib/ids";
 
 import type { SessionStatus } from "@/lib/contracts/session";
+import { createExpiredSessionReconciler } from "@/server/session-reconciliation";
 import { db } from "@/server/db/client";
 import { sessionEvents, sessions, type Session } from "@/server/db/schema";
 import { getLastPublishedSessionSequence, publishSessionEvent } from "@/server/api/session-events";
@@ -104,3 +105,12 @@ export async function assertSessionAcceptsCliTraffic(
 
   return currentSession;
 }
+
+export const reconcileExpiredSessions = createExpiredSessionReconciler({
+  async listExpiredLiveSessions(now) {
+    return db.query.sessions.findMany({
+      where: and(eq(sessions.status, "live"), lte(sessions.expiresAt, now)),
+    });
+  },
+  expireSession: expireSessionIfNeeded,
+});
