@@ -406,24 +406,42 @@ export function SessionsShell({
                                 variant="ghost"
                                 size="icon"
                                 className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                }}
                               >
                                 <MoreHorizontal className="h-3.5 w-3.5" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48">
                               <DropdownMenuItem
-                                onClick={() => setCliSession(session)}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setCliSession(session);
+                                }}
                               >
                                 <Terminal className="mr-2 h-3.5 w-3.5" />
                                 Connect via CLI
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openRename(session)}>
+                              <DropdownMenuItem
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  openRename(session);
+                                }}
+                              >
                                 <Pencil className="mr-2 h-3.5 w-3.5" />
                                 Rename
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-destructive focus:text-destructive"
-                                onClick={() => openDelete(session)}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  openDelete(session);
+                                }}
                               >
                                 <Trash2 className="mr-2 h-3.5 w-3.5" />
                                 Delete
@@ -651,7 +669,7 @@ export function SessionsShell({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
+              className="!bg-destructive !text-white hover:!bg-destructive/90"
               disabled={deletePending}
               onClick={() => void handleDelete()}
             >
