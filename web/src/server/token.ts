@@ -141,7 +141,10 @@ export async function verifySessionToken(token: string): Promise<TokenPayload> {
 }
 
 export class TokenError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
     super(message);
     this.name = "TokenError";
   }

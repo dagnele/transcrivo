@@ -8,9 +8,9 @@ use tracing::{debug, error, info, warn};
 
 use crate::audio::capture::{AudioCaptureWorker, CaptureSource, PcmChunk, SourceCaptures};
 use crate::audio::open_default_source_captures;
-use crate::commands::models::{ensure_model_downloaded, validate_model_name};
 use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
 use crate::audio::vad::{should_keep_chunk, VadConfig};
+use crate::commands::models::{ensure_model_downloaded, validate_model_name};
 use crate::session::manager::SessionManager;
 use crate::session::models::Source;
 use crate::transcribe::pipeline::TranscriptPipeline;
@@ -18,7 +18,9 @@ use crate::transcribe::whisper_cpp::{
     RealWhisperBackend, TranscriptionError, WhisperCppAdapter, WhisperCppConfig,
 };
 use crate::transport::protocol::{MessageEnvelope, ProtocolError};
-use crate::transport::{BackendWebSocketClient, WebSocketClientError, DEFAULT_READY_TIMEOUT_SECONDS};
+use crate::transport::{
+    BackendWebSocketClient, WebSocketClientError, DEFAULT_READY_TIMEOUT_SECONDS,
+};
 use crate::util::shutdown::ShutdownController;
 use crate::util::whisper_log;
 
@@ -136,7 +138,6 @@ pub struct RunArgs {
         help = "GPU device index for whisper.cpp when GPU acceleration is enabled."
     )]
     pub whisper_gpu_device: i32,
-
 }
 
 pub async fn execute(args: &RunArgs) -> Result<()> {
@@ -165,10 +166,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
 
     let transcription_config = build_transcription_config(args);
     let mut session = SessionManager::new(None);
-    let mut client = BackendWebSocketClient::new(
-        backend_url,
-        token,
-    );
+    let mut client = BackendWebSocketClient::new(backend_url, token);
     let source_captures =
         open_default_source_captures(args.mic_device.as_deref(), args.system_device.as_deref())?;
     let selected_devices = SelectedDevices::from_source_captures(&source_captures)?;
@@ -241,13 +239,18 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
             warn!(error = %error, "failed to close backend websocket cleanly");
         }
         Err(_) => {
-            warn!(timeout_ms = WS_CLOSE_TIMEOUT.as_millis(), "timed out closing backend websocket");
+            warn!(
+                timeout_ms = WS_CLOSE_TIMEOUT.as_millis(),
+                "timed out closing backend websocket"
+            );
         }
     }
 
     result?;
     drop(reset_abort_log_suppression);
-    println!("Session lifecycle completed successfully. Live transcription streaming stopped cleanly.");
+    println!(
+        "Session lifecycle completed successfully. Live transcription streaming stopped cleanly."
+    );
     Ok(())
 }
 
@@ -344,7 +347,11 @@ pub async fn run_live_session_with_adapter_factory<F>(
     adapter_factory: F,
 ) -> Result<()>
 where
-    F: Fn(Source, &TranscriptionConfig, &ShutdownController) -> Result<WhisperCppAdapter, TranscriptionError>
+    F: Fn(
+            Source,
+            &TranscriptionConfig,
+            &ShutdownController,
+        ) -> Result<WhisperCppAdapter, TranscriptionError>
         + Copy,
 {
     let preprocess_config = transcription_preprocess_config();
@@ -373,7 +380,11 @@ where
     let mut source_runtimes = HashMap::new();
     let mut inference_tasks = Vec::new();
     for (source, capture, session) in [
-        (Source::Mic, Arc::clone(&mic_worker), Arc::clone(&shared_session)),
+        (
+            Source::Mic,
+            Arc::clone(&mic_worker),
+            Arc::clone(&shared_session),
+        ),
         (Source::System, Arc::clone(&system_worker), shared_session),
     ] {
         let (inference_tx, inference_rx) = mpsc::channel(INFERENCE_REQUEST_CHANNEL_CAPACITY);
@@ -385,7 +396,11 @@ where
             source,
             SourceRuntime {
                 source,
-                preprocess: PreprocessState::new(capture_source, device_id, preprocess_config.clone()),
+                preprocess: PreprocessState::new(
+                    capture_source,
+                    device_id,
+                    preprocess_config.clone(),
+                ),
                 inference_tx,
             },
         );
@@ -490,10 +505,14 @@ where
     let stop_result = stop_workers(&mic_worker, &system_worker).await;
 
     for drain_task in drain_tasks {
-        drain_task.await.map_err(|error| anyhow::anyhow!("capture drain task failed: {error}"))?;
+        drain_task
+            .await
+            .map_err(|error| anyhow::anyhow!("capture drain task failed: {error}"))?;
     }
     for inference_task in inference_tasks {
-        inference_task.await.map_err(|error| anyhow::anyhow!("inference task failed: {error}"))?;
+        inference_task
+            .await
+            .map_err(|error| anyhow::anyhow!("inference task failed: {error}"))?;
     }
 
     run_result?;
@@ -667,10 +686,7 @@ async fn inference_worker(
         }
 
         if result_tx
-            .send(InferenceResult {
-                source,
-                messages,
-            })
+            .send(InferenceResult { source, messages })
             .await
             .is_err()
         {
@@ -752,7 +768,9 @@ async fn poll_backend_messages(
             Err(_) => return Ok(()),
         };
 
-        let inbound = session.handle_inbound_message(&message).map_err(anyhow::Error::msg)?;
+        let inbound = session
+            .handle_inbound_message(&message)
+            .map_err(anyhow::Error::msg)?;
         if matches!(inbound.state, crate::session::models::SessionState::Error) {
             shutdown.request();
             if let crate::session::manager::InboundPayload::Error(payload) = inbound.payload {
@@ -842,16 +860,25 @@ fn shutdown_reason_for_error(error: &anyhow::Error) -> String {
 
         return "backend_error".to_string();
     }
-    if error.downcast_ref::<crate::audio::devices::DeviceDiscoveryError>().is_some() {
+    if error
+        .downcast_ref::<crate::audio::devices::DeviceDiscoveryError>()
+        .is_some()
+    {
         return "device_error".to_string();
     }
-    if error.downcast_ref::<crate::audio::capture::CaptureError>().is_some() {
+    if error
+        .downcast_ref::<crate::audio::capture::CaptureError>()
+        .is_some()
+    {
         return "capture_error".to_string();
     }
     if error.downcast_ref::<TranscriptionError>().is_some() {
         return "transcription_error".to_string();
     }
-    if error.downcast_ref::<crate::transport::WebSocketClientError>().is_some() {
+    if error
+        .downcast_ref::<crate::transport::WebSocketClientError>()
+        .is_some()
+    {
         return "transport_error".to_string();
     }
     if error.downcast_ref::<ProtocolError>().is_some() {
@@ -862,11 +889,14 @@ fn shutdown_reason_for_error(error: &anyhow::Error) -> String {
 }
 
 fn should_send_session_stop(reason: Option<&str>) -> bool {
-    reason != Some("session_closed")
+    reason.is_none()
 }
 
 fn is_terminal_session_error_code(code: Option<&str>) -> bool {
-    matches!(code, Some(SESSION_EXPIRED_ERROR_CODE | SESSION_CLOSED_ERROR_CODE))
+    matches!(
+        code,
+        Some(SESSION_EXPIRED_ERROR_CODE | SESSION_CLOSED_ERROR_CODE)
+    )
 }
 
 #[cfg(test)]
@@ -886,6 +916,16 @@ mod tests {
     }
 
     #[test]
+    fn interrupted_session_does_not_send_session_stop() {
+        assert!(!should_send_session_stop(Some("user_interrupt")));
+    }
+
+    #[test]
+    fn graceful_completion_sends_session_stop() {
+        assert!(should_send_session_stop(None));
+    }
+
+    #[test]
     fn generic_backend_session_error_remains_backend_error_reason() {
         let error = anyhow::Error::new(BackendSessionError::new(
             "invalid token",
@@ -893,7 +933,6 @@ mod tests {
         ));
 
         assert_eq!(shutdown_reason_for_error(&error), "backend_error");
-        assert!(should_send_session_stop(Some("backend_error")));
+        assert!(!should_send_session_stop(Some("backend_error")));
     }
 }
-

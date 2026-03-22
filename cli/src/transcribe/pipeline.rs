@@ -113,20 +113,23 @@ impl TranscriptPipeline {
             )));
         }
 
-        self.adapter.transcribe_chunk_async(chunk).await.map_err(|error| {
-            if matches!(error, TranscriptionError::Aborted) {
-                return error;
-            }
-            error!(
-                source = ?chunk.source,
-                device_id = %chunk.device_id,
-                start_ms = chunk.start_ms,
-                end_ms = chunk.end_ms,
-                error = %error,
-                "transcription failed"
-            );
-            error
-        })
+        self.adapter
+            .transcribe_chunk_async(chunk)
+            .await
+            .map_err(|error| {
+                if matches!(error, TranscriptionError::Aborted) {
+                    return error;
+                }
+                error!(
+                    source = ?chunk.source,
+                    device_id = %chunk.device_id,
+                    start_ms = chunk.start_ms,
+                    end_ms = chunk.end_ms,
+                    error = %error,
+                    "transcription failed"
+                );
+                error
+            })
     }
 
     fn process_segments(
@@ -315,19 +318,23 @@ impl TranscriptPipeline {
         )?)
     }
 
-    fn force_finalize_overlong_pending(&mut self) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn force_finalize_overlong_pending(
+        &mut self,
+    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let mut messages = Vec::new();
 
         loop {
             let Some(pending) = self.pending_utterance.clone() else {
                 break;
             };
-            let Some(cut) = split_text_for_cutoff(&pending.text, MAX_PENDING_UTTERANCE_CHARS) else {
+            let Some(cut) = split_text_for_cutoff(&pending.text, MAX_PENDING_UTTERANCE_CHARS)
+            else {
                 break;
             };
 
             let (finalized, remainder) = split_pending_utterance(pending, cut);
-            let message = self.create_message_from_pending(TranscriptMessageType::Final, &finalized)?;
+            let message =
+                self.create_message_from_pending(TranscriptMessageType::Final, &finalized)?;
             debug!(
                 source = ?self.source,
                 start_ms = finalized.start_ms,
@@ -461,7 +468,8 @@ fn split_text_for_cutoff(text: &str, max_chars: usize) -> Option<ForcedCut> {
     let (split_byte, consumed_chars) = last_word_boundary_before(text, max_chars)
         .unwrap_or_else(|| (char_to_byte_index(text, max_chars), max_chars));
     let finalized_text = append_ellipsis(text[..split_byte].trim());
-    let remainder_text = trimmed_non_empty(text[split_byte..].trim()).map(|value| prepend_ellipsis(&value));
+    let remainder_text =
+        trimmed_non_empty(text[split_byte..].trim()).map(|value| prepend_ellipsis(&value));
     if finalized_text.is_empty() {
         return None;
     }

@@ -8,14 +8,12 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use cheatcode_cli_rs::audio::capture::{
     AudioCaptureWorker, CaptureConfig, CaptureSource, ProcessCaptureSpec, SourceCaptures,
 };
-use cheatcode_cli_rs::commands::run::{
-    run_live_session_with_adapter_factory, TranscriptionConfig,
-};
+use cheatcode_cli_rs::commands::run::{run_live_session_with_adapter_factory, TranscriptionConfig};
 use cheatcode_cli_rs::session::manager::SessionManager;
 use cheatcode_cli_rs::session::models::Source;
+use cheatcode_cli_rs::transcribe::whisper_cpp::{TranscriptionError, WhisperCppAdapter};
 use cheatcode_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
 use cheatcode_cli_rs::transport::BackendWebSocketClient;
-use cheatcode_cli_rs::transcribe::whisper_cpp::{WhisperCppAdapter, TranscriptionError};
 use cheatcode_cli_rs::util::shutdown::ShutdownController;
 
 fn adapter_factory(
@@ -26,7 +24,12 @@ fn adapter_factory(
     Ok(WhisperCppAdapter::debug())
 }
 
-fn python_capture_worker(source: CaptureSource, device_id: &str, device_name: &str, script: &str) -> AudioCaptureWorker {
+fn python_capture_worker(
+    source: CaptureSource,
+    device_id: &str,
+    device_name: &str,
+    script: &str,
+) -> AudioCaptureWorker {
     let mut config = CaptureConfig::new(source, device_id, device_name);
     config.sample_rate = 48_000;
     config.channels = 2;
@@ -125,7 +128,9 @@ async fn run_live_session_returns_error_when_one_source_ends_unexpectedly() {
 
     let error = result.expect_err("one source ending should fail the live session");
     assert!(
-        error.to_string().contains("Mic capture stream ended unexpectedly"),
+        error
+            .to_string()
+            .contains("Mic capture stream ended unexpectedly"),
         "unexpected error: {error}"
     );
 

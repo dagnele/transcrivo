@@ -5,8 +5,8 @@ use serde_json::json;
 use tokio::net::TcpListener;
 use tokio_tungstenite::{
     accept_hdr_async,
-    tungstenite::Message,
     tungstenite::handshake::server::{Callback, ErrorResponse, NoCallback, Request, Response},
+    tungstenite::Message,
 };
 
 use cheatcode_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
@@ -17,11 +17,7 @@ struct AuthHeaderRecorder {
 }
 
 impl Callback for AuthHeaderRecorder {
-    fn on_request(
-        self,
-        request: &Request,
-        response: Response,
-    ) -> Result<Response, ErrorResponse> {
+    fn on_request(self, request: &Request, response: Response) -> Result<Response, ErrorResponse> {
         let header = request
             .headers()
             .get("authorization")

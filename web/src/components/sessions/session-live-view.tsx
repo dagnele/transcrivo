@@ -155,7 +155,7 @@ function applyEvent(state: SessionState, event: SessionEvent): SessionState {
       );
 
   const existingIndex = normalizedTranscript.findIndex(
-    (item) => sameUtterance(item) || (item.status === "partial" && overlapsSameSource(item)),
+    (item) => item.status === "partial" && (sameUtterance(item) || overlapsSameSource(item)),
   );
 
   if (existingIndex >= 0) {
@@ -506,7 +506,7 @@ export function SessionLiveView({
                       const isYou = entry.source === "mic";
 
                       return (
-                        <div key={entry.utteranceId}>
+                        <div key={entry.id}>
                           <div className="flex items-baseline gap-2">
                             <span
                               className={cn(

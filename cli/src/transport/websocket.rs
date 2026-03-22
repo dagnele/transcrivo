@@ -162,11 +162,9 @@ impl BackendWebSocketClient {
         loop {
             let raw_message = match self.require_connection()?.next().await {
                 Some(Ok(Message::Text(text))) => text,
-                Some(Ok(Message::Binary(bytes))) => {
-                    String::from_utf8(bytes.to_vec())
-                        .map_err(|_| WebSocketClientError::NonTextMessage)?
-                        .into()
-                }
+                Some(Ok(Message::Binary(bytes))) => String::from_utf8(bytes.to_vec())
+                    .map_err(|_| WebSocketClientError::NonTextMessage)?
+                    .into(),
                 Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {
                     debug!("ignoring backend websocket control frame");
                     continue;

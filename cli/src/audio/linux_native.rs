@@ -37,7 +37,10 @@ pub struct NativeLinuxPipeWireRuntime {
 }
 
 impl NativeLinuxPipeWireRuntime {
-    pub fn start(spec: &NativeLinuxCaptureSpec, config: &CaptureConfig) -> Result<Self, CaptureError> {
+    pub fn start(
+        spec: &NativeLinuxCaptureSpec,
+        config: &CaptureConfig,
+    ) -> Result<Self, CaptureError> {
         start_pipewire_runtime(spec, config)
     }
 
@@ -252,13 +255,9 @@ fn start_pipewire_runtime(
     let config = config.clone();
 
     let join_handle = std::thread::spawn(move || {
-        if let Err(error) = run_pipewire_capture_thread(
-            spec,
-            config,
-            audio_tx,
-            stop_for_thread,
-            startup_tx.clone(),
-        ) {
+        if let Err(error) =
+            run_pipewire_capture_thread(spec, config, audio_tx, stop_for_thread, startup_tx.clone())
+        {
             let _ = startup_tx.send(Err(error));
         }
     });
