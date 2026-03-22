@@ -5,8 +5,10 @@ use tokio::process::{Child, ChildStdout, Command};
 
 use thiserror::Error;
 
-use crate::audio::devices::PipeWireTarget;
-use crate::audio::linux_native::NativeLinuxPipeWireRuntime;
+#[cfg(target_os = "linux")]
+use crate::audio::linux_native::{NativeLinuxCaptureSpec, NativeLinuxPipeWireRuntime};
+#[cfg(target_os = "windows")]
+use crate::audio::windows_native::{NativeWindowsCaptureSpec, NativeWindowsWasapiRuntime};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CaptureSource {
@@ -77,17 +79,6 @@ impl ProcessCaptureSpec {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NativeLinuxCaptureSpec {
-    pub target: PipeWireTarget,
-}
-
-impl NativeLinuxCaptureSpec {
-    pub fn pipewire(target: PipeWireTarget) -> Self {
-        Self { target }
-    }
-}
-
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CaptureError {
     #[error("capture backend is not implemented yet")]
@@ -112,7 +103,10 @@ pub enum CaptureError {
 enum CaptureBackendSpec {
     Placeholder,
     Process(ProcessCaptureSpec),
+    #[cfg(target_os = "linux")]
     NativeLinuxPipeWire(NativeLinuxCaptureSpec),
+    #[cfg(target_os = "windows")]
+    NativeWindowsWasapi(NativeWindowsCaptureSpec),
 }
 
 #[derive(Debug)]
@@ -148,7 +142,10 @@ impl ProcessCaptureRuntime {
 #[derive(Debug)]
 enum CaptureRuntime {
     Process(ProcessCaptureRuntime),
+    #[cfg(target_os = "linux")]
     NativeLinuxPipeWire(NativeLinuxPipeWireRuntime),
+    #[cfg(target_os = "windows")]
+    NativeWindowsWasapi(NativeWindowsWasapiRuntime),
 }
 
 #[derive(Debug)]
@@ -175,6 +172,7 @@ impl AudioCaptureWorker {
         }
     }
 
+    #[cfg(target_os = "linux")]
     pub fn native_linux_pipewire(config: CaptureConfig, spec: NativeLinuxCaptureSpec) -> Self {
         Self {
             config,
@@ -183,10 +181,23 @@ impl AudioCaptureWorker {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn native_windows_wasapi(config: CaptureConfig, spec: NativeWindowsCaptureSpec) -> Self {
+        Self {
+            config,
+            backend: CaptureBackendSpec::NativeWindowsWasapi(spec),
+            running: None,
+        }
+    }
+
     pub fn process_spec(&self) -> Option<&ProcessCaptureSpec> {
         match &self.backend {
+            CaptureBackendSpec::Placeholder => None,
             CaptureBackendSpec::Process(spec) => Some(spec),
-            CaptureBackendSpec::Placeholder | CaptureBackendSpec::NativeLinuxPipeWire(_) => None,
+            #[cfg(target_os = "linux")]
+            CaptureBackendSpec::NativeLinuxPipeWire(_) => None,
+            #[cfg(target_os = "windows")]
+            CaptureBackendSpec::NativeWindowsWasapi(_) => None,
         }
     }
 
@@ -213,9 +224,16 @@ impl AudioCaptureWorker {
                 }));
                 Ok(())
             }
+            #[cfg(target_os = "linux")]
             CaptureBackendSpec::NativeLinuxPipeWire(spec) => {
                 let runtime = NativeLinuxPipeWireRuntime::start(spec, &self.config)?;
                 self.running = Some(CaptureRuntime::NativeLinuxPipeWire(runtime));
+                Ok(())
+            }
+            #[cfg(target_os = "windows")]
+            CaptureBackendSpec::NativeWindowsWasapi(spec) => {
+                let runtime = NativeWindowsWasapiRuntime::start(spec, &self.config)?;
+                self.running = Some(CaptureRuntime::NativeWindowsWasapi(runtime));
                 Ok(())
             }
         }
@@ -224,7 +242,12 @@ impl AudioCaptureWorker {
     pub async fn read_chunk(&mut self) -> Result<PcmChunk, CaptureError> {
         match self.running.as_mut() {
             Some(CaptureRuntime::Process(runtime)) => runtime.read_chunk(&self.config).await,
+            #[cfg(target_os = "linux")]
             Some(CaptureRuntime::NativeLinuxPipeWire(runtime)) => {
+                runtime.read_chunk(&self.config).await
+            }
+            #[cfg(target_os = "windows")]
+            Some(CaptureRuntime::NativeWindowsWasapi(runtime)) => {
                 runtime.read_chunk(&self.config).await
             }
             None => Err(CaptureError::NotRunning),
@@ -238,7 +261,10 @@ impl AudioCaptureWorker {
 
         match &mut running {
             CaptureRuntime::Process(runtime) => runtime.stop().await,
+            #[cfg(target_os = "linux")]
             CaptureRuntime::NativeLinuxPipeWire(runtime) => runtime.stop().await,
+            #[cfg(target_os = "windows")]
+            CaptureRuntime::NativeWindowsWasapi(runtime) => runtime.stop().await,
         }
 
         Ok(())

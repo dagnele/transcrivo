@@ -5,10 +5,21 @@ use std::thread::JoinHandle;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::audio::capture::{CaptureConfig, CaptureError, NativeLinuxCaptureSpec, PcmChunk};
+use crate::audio::capture::{CaptureConfig, CaptureError, PcmChunk};
 use crate::audio::devices::{AudioBackendTarget, AudioDevice, DeviceDiscoveryError};
 
 use crate::audio::devices::PipeWireCaptureTargetKind;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeLinuxCaptureSpec {
+    pub target: crate::audio::devices::PipeWireTarget,
+}
+
+impl NativeLinuxCaptureSpec {
+    pub fn pipewire(target: crate::audio::devices::PipeWireTarget) -> Self {
+        Self { target }
+    }
+}
 
 pub fn build_native_capture_spec(
     device: &AudioDevice,

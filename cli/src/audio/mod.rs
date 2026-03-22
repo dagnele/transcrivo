@@ -1,10 +1,14 @@
 pub mod capture;
 pub mod devices;
+#[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "linux")]
 pub mod linux_native;
 pub mod preprocess;
 pub mod vad;
 pub mod windows;
+#[cfg(target_os = "windows")]
+pub mod windows_native;
 
 use capture::SourceCaptures;
 use devices::DeviceDiscoveryError;

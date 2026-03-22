@@ -2,9 +2,17 @@ use cheatcode_cli_rs::audio::capture::{pcm16le_from_f32_frames, CaptureSource};
 use cheatcode_cli_rs::audio::devices::{
     format_device_inventory, get_default_microphone, get_default_system_source,
     get_microphone_by_id, get_system_source_by_id, AudioBackendTarget, AudioDevice,
-    DeviceInventory, DeviceKind, PipeWireCaptureTargetKind, PipeWireTarget,
+    DeviceInventory, DeviceKind,
 };
-use cheatcode_cli_rs::audio::{linux, linux_native, windows};
+#[cfg(target_os = "linux")]
+use cheatcode_cli_rs::audio::devices::{PipeWireCaptureTargetKind, PipeWireTarget};
+#[cfg(target_os = "windows")]
+use cheatcode_cli_rs::audio::windows;
+#[cfg(target_os = "windows")]
+use cheatcode_cli_rs::audio::windows_native;
+#[cfg(target_os = "linux")]
+use cheatcode_cli_rs::audio::{linux, linux_native};
+#[cfg(target_os = "linux")]
 use serde_json::json;
 
 #[test]
@@ -161,6 +169,7 @@ fn format_inventory_lists_defaults_and_warnings() {
     assert!(rendered.contains("Warnings:"));
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn parse_wpctl_default_name_extracts_node_name() {
     let name = linux::parse_wpctl_default_name(
@@ -170,6 +179,7 @@ fn parse_wpctl_default_name_extracts_node_name() {
     assert_eq!(name, Some("source.default"));
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn parse_pipewire_nodes_splits_microphones_and_sinks() {
     let devices = linux::parse_pipewire_nodes(
@@ -228,6 +238,7 @@ fn parse_pipewire_nodes_splits_microphones_and_sinks() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn parse_pipewire_nodes_preserves_backend_target_when_cli_id_falls_back_to_serial() {
     let devices = linux::parse_pipewire_nodes(
@@ -264,6 +275,7 @@ fn parse_pipewire_nodes_preserves_backend_target_when_cli_id_falls_back_to_seria
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn native_linux_capture_spec_uses_pipewire_backend_target() {
     let device = AudioDevice {
@@ -292,6 +304,7 @@ fn native_linux_capture_spec_uses_pipewire_backend_target() {
     );
 }
 
+#[cfg(target_os = "linux")]
 #[test]
 fn build_channel_map_uses_requested_channel_count() {
     assert_eq!(
@@ -300,6 +313,7 @@ fn build_channel_map_uses_requested_channel_count() {
     );
 }
 
+#[cfg(target_os = "windows")]
 #[test]
 fn windows_inventory_from_enumerated_endpoints_marks_defaults_and_roles() {
     let inventory = windows::inventory_from_enumerated_endpoints(
@@ -318,12 +332,10 @@ fn windows_inventory_from_enumerated_endpoints_marks_defaults_and_roles() {
     assert_eq!(inventory.microphones[0].kind, DeviceKind::Mic);
     assert!(inventory.system_sources[0].is_default);
     assert_eq!(inventory.system_sources[0].kind, DeviceKind::System);
-    assert!(inventory
-        .warnings
-        .iter()
-        .any(|warning| warning.contains("Core Audio endpoints")));
+    assert!(inventory.warnings.is_empty());
 }
 
+#[cfg(target_os = "windows")]
 #[test]
 fn windows_source_captures_prefer_marked_default_render_endpoint() {
     let inventory = windows::inventory_from_enumerated_endpoints(
@@ -344,6 +356,7 @@ fn windows_source_captures_prefer_marked_default_render_endpoint() {
     assert_eq!(system.config.source, CaptureSource::System);
 }
 
+#[cfg(target_os = "windows")]
 #[test]
 fn windows_devices_preserve_stable_id_and_backend_target_identity() {
     let inventory = windows::inventory_from_enumerated_endpoints(
@@ -377,6 +390,26 @@ fn windows_devices_preserve_stable_id_and_backend_target_identity() {
     );
 }
 
+#[cfg(target_os = "windows")]
+#[test]
+fn windows_native_capture_spec_marks_loopback_for_system_sources() {
+    let inventory = windows::inventory_from_enumerated_endpoints(
+        vec![("mic-a".to_string(), "Desk Mic".to_string(), true)],
+        vec![("spk-a".to_string(), "USB Speakers".to_string(), true)],
+    );
+
+    let mic_spec = windows_native::build_native_capture_spec(&inventory.microphones[0])
+        .expect("mic spec should build");
+    let system_spec = windows_native::build_native_capture_spec(&inventory.system_sources[0])
+        .expect("system spec should build");
+
+    assert_eq!(mic_spec.device_id, "mic-a");
+    assert!(!mic_spec.loopback);
+    assert_eq!(system_spec.device_id, "spk-a");
+    assert!(system_spec.loopback);
+}
+
+#[cfg(target_os = "linux")]
 #[test]
 fn source_capture_selection_preserves_source_roles_on_linux() {
     let inventory = DeviceInventory {

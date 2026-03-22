@@ -3,10 +3,13 @@ use crate::audio::devices::{
     get_default_microphone, AudioBackendTarget, AudioDevice, DeviceDiscoveryError, DeviceInventory,
     DeviceKind,
 };
+#[cfg(target_os = "windows")]
+use crate::audio::windows_native::build_native_capture_spec;
 
 #[cfg(target_os = "windows")]
 mod imp {
     use windows::core::PWSTR;
+    use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
     use windows::Win32::Media::Audio::eCapture;
     use windows::Win32::Media::Audio::eConsole;
     use windows::Win32::Media::Audio::eRender;
@@ -17,11 +20,10 @@ mod imp {
     use windows::Win32::System::Com::CoCreateInstance;
     use windows::Win32::System::Com::CoInitializeEx;
     use windows::Win32::System::Com::CoUninitialize;
+    use windows::Win32::System::Com::StructuredStorage::PropVariantClear;
     use windows::Win32::System::Com::CLSCTX_ALL;
-    use windows::Win32::System::Com::PROPVARIANT;
     use windows::Win32::System::Com::STGM_READ;
-    use windows::Win32::System::Com::{StructuredStorage::PropVariantClear, COINIT_MULTITHREADED};
-    use windows::Win32::UI::Shell::PropertiesSystem::PKEY_Device_FriendlyName;
+    use windows::Win32::System::Com::{StructuredStorage::PROPVARIANT, COINIT_MULTITHREADED};
 
     use crate::audio::devices::{
         AudioBackendTarget, AudioDevice, DeviceDiscoveryError, DeviceInventory, DeviceKind,
@@ -30,6 +32,7 @@ mod imp {
     pub fn discover_audio_devices() -> Result<DeviceInventory, DeviceDiscoveryError> {
         unsafe {
             CoInitializeEx(None, COINIT_MULTITHREADED)
+                .ok()
                 .map_err(|error| DeviceDiscoveryError::CommandFailed(error.to_string()))?;
         }
 
@@ -73,11 +76,6 @@ mod imp {
                 "No active Windows render endpoints were found for loopback capture.".to_string(),
             );
         }
-        warnings.push(
-            "Windows discovery now uses Core Audio endpoints, but native WASAPI capture is still not wired."
-                .to_string(),
-        );
-
         Ok(DeviceInventory {
             platform: "windows".to_string(),
             backend: Some("wasapi".to_string()),
@@ -146,12 +144,8 @@ mod imp {
         let property_store = unsafe { device.OpenPropertyStore(STGM_READ) }
             .map_err(|error| DeviceDiscoveryError::CommandFailed(error.to_string()))?;
 
-        let mut value = PROPVARIANT::default();
-        unsafe {
-            property_store
-                .GetValue(&PKEY_Device_FriendlyName, &mut value)
-                .map_err(|error| DeviceDiscoveryError::CommandFailed(error.to_string()))?;
-        }
+        let mut value: PROPVARIANT = unsafe { property_store.GetValue(&PKEY_Device_FriendlyName) }
+            .map_err(|error| DeviceDiscoveryError::CommandFailed(error.to_string()))?;
 
         let result = propvariant_string(&value).ok_or_else(|| {
             DeviceDiscoveryError::InvalidData(
@@ -175,8 +169,7 @@ mod imp {
     }
 
     fn pwstr_to_string(value: PWSTR) -> Result<String, DeviceDiscoveryError> {
-        value
-            .to_string()
+        unsafe { value.to_string() }
             .map_err(|error| DeviceDiscoveryError::CommandFailed(error.to_string()))
     }
 }
@@ -361,8 +354,8 @@ pub fn open_source_captures(
     })?;
 
     Ok(SourceCaptures::new(
-        AudioCaptureWorker::placeholder(create_mic_config(mic_device)),
-        AudioCaptureWorker::placeholder(create_system_config(system_device)),
+        create_mic_capture(mic_device)?,
+        create_system_capture(system_device)?,
     ))
 }
 
@@ -380,6 +373,32 @@ fn create_system_config(device: &AudioDevice) -> CaptureConfig {
         device.device_id.clone(),
         device.name.clone(),
     )
+}
+
+#[cfg(target_os = "windows")]
+fn create_mic_capture(device: &AudioDevice) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
+    let config = create_mic_config(device);
+    let spec = build_native_capture_spec(device)?;
+    Ok(AudioCaptureWorker::native_windows_wasapi(config, spec))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_mic_capture(device: &AudioDevice) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
+    Ok(AudioCaptureWorker::placeholder(create_mic_config(device)))
+}
+
+#[cfg(target_os = "windows")]
+fn create_system_capture(device: &AudioDevice) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
+    let config = create_system_config(device);
+    let spec = build_native_capture_spec(device)?;
+    Ok(AudioCaptureWorker::native_windows_wasapi(config, spec))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_system_capture(device: &AudioDevice) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
+    Ok(AudioCaptureWorker::placeholder(create_system_config(
+        device,
+    )))
 }
 
 pub fn inventory_from_enumerated_endpoints(
@@ -417,10 +436,7 @@ pub fn inventory_from_enumerated_endpoints(
                 state: Some("active".to_string()),
             })
             .collect(),
-        warnings: vec![
-            "Windows discovery now uses Core Audio endpoints, but native WASAPI capture is still not wired."
-                .to_string(),
-        ],
+        warnings: Vec::new(),
     }
 }
 
