@@ -8,6 +8,12 @@ use whisper_rs::{GGMLLogLevel, WhisperLogCallback};
 static INSTALL: Once = Once::new();
 static SUPPRESS_ABORT_ERRORS: AtomicBool = AtomicBool::new(false);
 
+#[cfg(all(windows, not(target_env = "gnu")))]
+type WhisperRawLogLevel = i32;
+
+#[cfg(any(not(windows), target_env = "gnu"))]
+type WhisperRawLogLevel = u32;
+
 pub fn install_whisper_log_hook() {
     INSTALL.call_once(|| unsafe {
         let callback: WhisperLogCallback = Some(whisper_log_callback);
@@ -23,7 +29,11 @@ pub fn should_suppress(level: GGMLLogLevel, text: &str) -> bool {
     should_suppress_log(&level, text)
 }
 
-unsafe extern "C" fn whisper_log_callback(level: u32, text: *const c_char, _: *mut c_void) {
+unsafe extern "C" fn whisper_log_callback(
+    level: WhisperRawLogLevel,
+    text: *const c_char,
+    _: *mut c_void,
+) {
     if text.is_null() {
         tracing::error!("whisper_log_callback: text is nullptr");
         return;

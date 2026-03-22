@@ -1,3 +1,5 @@
+#![cfg(target_os = "linux")]
+
 use cheatcode_cli_rs::audio::capture::{
     AudioCaptureWorker, CaptureConfig, CaptureSource, ProcessCaptureSpec,
 };

@@ -468,6 +468,10 @@ where
                             if shutdown.is_requested() {
                                 break;
                             }
+                            poll_backend_messages(session, client, shutdown).await?;
+                            if shutdown.is_requested() {
+                                break;
+                            }
                             bail!("{:?} capture stream ended unexpectedly", source);
                         }
                     }
@@ -967,7 +971,6 @@ mod tests {
     use crate::audio::capture::CaptureSource;
     use crate::audio::capture::PcmChunk;
     use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
-    use crate::session::models::Source;
     use crate::transport::BackendSessionError;
 
     #[test]
