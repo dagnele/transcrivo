@@ -7,7 +7,7 @@ import { useSubscription } from "@trpc/tanstack-react-query";
 import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
 import { SessionLiveHeader } from "@/components/sessions/session-live-header";
 import { SessionTranscriptPane } from "@/components/sessions/session-transcript-pane";
-import { SolutionPane } from "@/components/sessions/solution-pane";
+import { SolutionPane } from "@/components/sessions/session-solution-pane";
 import {
   ResizableHandle,
   ResizablePanel,

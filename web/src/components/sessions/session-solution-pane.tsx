@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollNav } from "@/components/ui/scroll-nav";
 import type { SessionSolution } from "@/lib/contracts/solution";
 
+import { PaneEmptyState, PaneLoadingDots } from "./session-pane-states";
 import { SolutionMarkdown } from "./solution-markdown";
 
 type SolutionViewState = {
@@ -121,33 +122,21 @@ export function SolutionPane({ state }: SolutionPaneProps) {
         className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8"
       >
         {state.status === "idle" ? (
-          <div className="flex h-full flex-col items-center justify-center text-center">
-            <Sparkles className="h-4 w-4 text-muted-foreground/30" />
-            <p className="mt-3 text-xs text-muted-foreground/40">
-              {state.solutionEnabled
-                ? "Waiting for transcript"
-                : "AI generation is off"}
-            </p>
-          </div>
+          <PaneEmptyState
+            icon={Sparkles}
+            message={state.solutionEnabled ? "Waiting for transcript" : "AI generation is off"}
+          />
         ) : null}
 
         {state.status === "generating" && !state.solution ? (
           <div className="flex h-full items-center justify-center">
-            <div className="flex gap-1">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40" />
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
-            </div>
+            <PaneLoadingDots />
           </div>
         ) : null}
 
         {state.status === "generating" && hasRenderableSolution ? (
           <div className="mb-6 flex justify-center">
-            <div className="flex gap-1">
-              <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40" />
-              <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
-              <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
-            </div>
+            <PaneLoadingDots size="sm" />
           </div>
         ) : null}
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useSubscription } from "@trpc/tanstack-react-query";
+import { Mic } from "lucide-react";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ScrollNav } from "@/components/ui/scroll-nav";
@@ -12,6 +13,7 @@ import { formatTimecode, getConnectionLabel } from "@/lib/session-ui";
 import { useTRPC, useTRPCClient } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
+import { PaneEmptyState, PaneLoadingDots } from "./session-pane-states";
 import {
   getSpeakerLabel,
   getTranscriptItemFromEvent,
@@ -242,30 +244,20 @@ export function SessionTranscriptPane({
           downDisabled={isNearBottom}
         />
 
-        <ScrollArea className="h-full" viewportRef={viewportRef}>
-          {transcriptPagesQuery.status === "pending" ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="flex gap-1">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40" />
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
-              </div>
-            </div>
-          ) : transcriptItems.length === 0 ? (
-            <div className="flex h-full items-center justify-center">
-              <p className="text-xs text-muted-foreground/40">Waiting for transcript</p>
-            </div>
-          ) : (
+        {transcriptPagesQuery.status === "pending" ? (
+          <div className="flex h-full items-center justify-center">
+            <PaneLoadingDots />
+          </div>
+        ) : transcriptItems.length === 0 ? (
+          <PaneEmptyState icon={Mic} message="Waiting for transcript" />
+        ) : (
+          <ScrollArea className="h-full" viewportRef={viewportRef}>
             <div className="px-6 py-5">
               <div ref={topSentinelRef} className="h-px w-full" aria-hidden="true" />
 
               {isFetchingOlderTranscript ? (
                 <div className="mb-4 flex justify-center">
-                  <div className="flex gap-1">
-                    <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40" />
-                    <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]" />
-                    <span className="h-1 w-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]" />
-                  </div>
+                  <PaneLoadingDots size="sm" />
                 </div>
               ) : null}
 
@@ -309,8 +301,8 @@ export function SessionTranscriptPane({
                 <div ref={bottomAnchorRef} />
               </div>
             </div>
-          )}
-        </ScrollArea>
+          </ScrollArea>
+        )}
       </div>
     </div>
   );
