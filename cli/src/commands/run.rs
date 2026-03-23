@@ -40,6 +40,9 @@ const CAPTURE_CHANNEL_CAPACITY: usize = 256;
 const INFERENCE_REQUEST_CHANNEL_CAPACITY: usize = 8;
 const INFERENCE_RESULT_CHANNEL_CAPACITY: usize = 32;
 const WS_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+const RECONNECT_WINDOW: Duration = Duration::from_secs(60);
+const RECONNECT_INITIAL_BACKOFF: Duration = Duration::from_millis(250);
+const RECONNECT_MAX_BACKOFF: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 enum CaptureEvent {
@@ -211,6 +214,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
             &mut session,
             &mut client,
             source_captures,
+            &selected_devices,
             &shutdown,
             transcription_config,
         )
@@ -328,6 +332,7 @@ pub async fn run_live_session(
     session: &mut SessionManager,
     client: &mut BackendWebSocketClient,
     source_captures: SourceCaptures,
+    selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
     transcription_config: TranscriptionConfig,
 ) -> Result<()> {
@@ -335,6 +340,7 @@ pub async fn run_live_session(
         session,
         client,
         source_captures,
+        selected_devices,
         shutdown,
         transcription_config,
         build_interruptible_transcription_adapter,
@@ -346,6 +352,7 @@ pub async fn run_live_session_with_adapter_factory<F>(
     session: &mut SessionManager,
     client: &mut BackendWebSocketClient,
     source_captures: SourceCaptures,
+    selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
     transcription_config: TranscriptionConfig,
     adapter_factory: F,
@@ -446,7 +453,7 @@ where
                     break;
                 }
                 _ = &mut backend_tick => {
-                    poll_backend_messages(session, client, shutdown).await?;
+                    poll_backend_messages(session, client, selected_devices, shutdown).await?;
                     backend_tick.as_mut().reset(Instant::now() + BACKEND_POLL_INTERVAL);
                 }
                 capture_event = capture_rx.recv() => {
@@ -468,7 +475,7 @@ where
                             if shutdown.is_requested() {
                                 break;
                             }
-                            poll_backend_messages(session, client, shutdown).await?;
+                            poll_backend_messages(session, client, selected_devices, shutdown).await?;
                             if shutdown.is_requested() {
                                 break;
                             }
@@ -483,7 +490,7 @@ where
                         }
                         bail!("live inference worker exited unexpectedly");
                     };
-                    send_inference_result(client, result).await?;
+                    send_inference_result(session, client, selected_devices, shutdown, result).await?;
                 }
             }
         }
@@ -507,7 +514,7 @@ where
     drop(result_tx);
 
     while let Some(result) = result_rx.recv().await {
-        send_inference_result(client, result).await?;
+        send_inference_result(session, client, selected_devices, shutdown, result).await?;
     }
 
     let stop_result = stop_workers(&mic_worker, &system_worker).await;
@@ -758,11 +765,14 @@ async fn inference_worker(
 }
 
 async fn send_inference_result(
+    session: &mut SessionManager,
     client: &mut BackendWebSocketClient,
+    selected_devices: &SelectedDevices,
+    shutdown: &ShutdownController,
     result: InferenceResult,
 ) -> Result<()> {
     for message in result.messages {
-        client.send_message(&message).await?;
+        send_message_with_reconnect(session, client, selected_devices, shutdown, &message).await?;
         debug!(
             message_type = ?message.message_type,
             source = ?result.source,
@@ -795,19 +805,24 @@ fn enqueue_inference_request(
 async fn poll_backend_messages(
     session: &mut SessionManager,
     client: &mut BackendWebSocketClient,
+    selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
 ) -> Result<()> {
     loop {
         let message = match timeout(BACKEND_MESSAGE_POLL_TIMEOUT, client.receive_message()).await {
             Ok(Ok(message)) => message,
             Ok(Err(WebSocketClientError::ConnectionClosed)) => {
-                info!("backend connection closed");
-                whisper_log::set_suppress_abort_errors(true);
-                shutdown.request();
+                info!("backend connection closed; attempting reconnect");
+                reconnect_backend_session(session, client, selected_devices, shutdown).await?;
                 return Ok(());
             }
             Ok(Err(error)) if shutdown.is_requested() => {
                 debug!(error = %error, "ignoring receive error during shutdown");
+                return Ok(());
+            }
+            Ok(Err(error)) if is_reconnectable_websocket_error(&error) => {
+                warn!(error = %error, "backend receive failed; attempting reconnect");
+                reconnect_backend_session(session, client, selected_devices, shutdown).await?;
                 return Ok(());
             }
             Ok(Err(error)) => return Err(error.into()),
@@ -836,6 +851,102 @@ async fn poll_backend_messages(
             "received backend message"
         );
     }
+}
+
+async fn send_message_with_reconnect(
+    session: &mut SessionManager,
+    client: &mut BackendWebSocketClient,
+    selected_devices: &SelectedDevices,
+    shutdown: &ShutdownController,
+    message: &MessageEnvelope,
+) -> Result<()> {
+    match client.send_message(message).await {
+        Ok(()) => Ok(()),
+        Err(error) if is_reconnectable_websocket_error(&error) && !shutdown.is_requested() => {
+            warn!(error = %error, "backend send failed; attempting reconnect");
+            reconnect_backend_session(session, client, selected_devices, shutdown).await
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+async fn reconnect_backend_session(
+    session: &mut SessionManager,
+    client: &mut BackendWebSocketClient,
+    selected_devices: &SelectedDevices,
+    shutdown: &ShutdownController,
+) -> Result<()> {
+    let reconnect_deadline = Instant::now() + RECONNECT_WINDOW;
+    let mut backoff = RECONNECT_INITIAL_BACKOFF;
+
+    loop {
+        if shutdown.is_requested() {
+            bail!("shutdown requested")
+        }
+
+        let _ = client.close().await;
+
+        match reconnect_backend_session_once(session, client, selected_devices).await {
+            Ok(()) => {
+                info!("backend session ready after reconnect");
+                return Ok(());
+            }
+            Err(error) if is_reconnectable_reconnect_error(&error) && Instant::now() < reconnect_deadline =>
+            {
+                warn!(
+                    error = %error,
+                    backoff_ms = backoff.as_millis(),
+                    remaining_ms = reconnect_deadline.saturating_duration_since(Instant::now()).as_millis(),
+                    "backend reconnect attempt failed"
+                );
+
+                tokio::select! {
+                    _ = shutdown.wait_for_request() => bail!("shutdown requested"),
+                    _ = sleep(backoff) => {}
+                }
+
+                backoff = (backoff * 2).min(RECONNECT_MAX_BACKOFF);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+}
+
+async fn reconnect_backend_session_once(
+    session: &mut SessionManager,
+    client: &mut BackendWebSocketClient,
+    selected_devices: &SelectedDevices,
+) -> Result<()> {
+    client.connect().await?;
+    info!("backend reconnect succeeded; starting fresh session");
+
+    let start_message = build_session_start_message(session, selected_devices)?;
+    client.send_message(&start_message).await?;
+    let ready = client
+        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .await?;
+    session
+        .handle_inbound_message(&ready)
+        .map_err(anyhow::Error::msg)?;
+
+    Ok(())
+}
+
+fn is_reconnectable_websocket_error(error: &WebSocketClientError) -> bool {
+    matches!(
+        error,
+        WebSocketClientError::ConnectFailed(_)
+            | WebSocketClientError::NotConnected
+            | WebSocketClientError::SendFailed
+            | WebSocketClientError::ReceiveFailed
+            | WebSocketClientError::ConnectionClosed
+    )
+}
+
+fn is_reconnectable_reconnect_error(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<WebSocketClientError>()
+        .is_some_and(is_reconnectable_websocket_error)
 }
 
 #[derive(Debug, Clone, Default)]

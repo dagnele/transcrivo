@@ -135,7 +135,7 @@ impl BackendWebSocketClient {
             Err(TungsteniteError::ConnectionClosed) | Err(TungsteniteError::AlreadyClosed) => {}
             Err(_) => return Err(WebSocketClientError::ReceiveFailed),
         }
-        self.connection = None;
+        self.mark_disconnected();
         info!(backend_url = %self.backend_url, "backend close complete");
         Ok(())
     }
@@ -152,10 +152,17 @@ impl BackendWebSocketClient {
             raw = %raw_message,
             "backend send"
         );
-        self.require_connection()?
+        let send_result = self
+            .require_connection()?
             .send(Message::Text(raw_message.into()))
             .await
-            .map_err(|_| WebSocketClientError::SendFailed)
+            .map_err(|_| WebSocketClientError::SendFailed);
+
+        if send_result.is_err() {
+            self.mark_disconnected();
+        }
+
+        send_result
     }
 
     pub async fn receive_message(&mut self) -> Result<MessageEnvelope, WebSocketClientError> {
@@ -174,13 +181,18 @@ impl BackendWebSocketClient {
                     continue;
                 }
                 Some(Ok(Message::Close(_))) | None => {
+                    self.mark_disconnected();
                     return Err(WebSocketClientError::ConnectionClosed);
                 }
                 Some(Err(TungsteniteError::ConnectionClosed))
                 | Some(Err(TungsteniteError::AlreadyClosed)) => {
+                    self.mark_disconnected();
                     return Err(WebSocketClientError::ConnectionClosed);
                 }
-                Some(Err(_)) => return Err(WebSocketClientError::ReceiveFailed),
+                Some(Err(_)) => {
+                    self.mark_disconnected();
+                    return Err(WebSocketClientError::ReceiveFailed);
+                }
             };
 
             let message = parse_message(&raw_message)?;
@@ -234,5 +246,9 @@ impl BackendWebSocketClient {
         self.connection
             .as_mut()
             .ok_or(WebSocketClientError::NotConnected)
+    }
+
+    fn mark_disconnected(&mut self) {
+        self.connection = None;
     }
 }
