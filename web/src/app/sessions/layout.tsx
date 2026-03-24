@@ -1,9 +1,19 @@
+import type { Metadata } from "next";
+
 import type { EntitlementSummary } from "@/lib/contracts/billing";
 import { SessionsShell } from "@/components/sessions/sessions-shell";
 import { getRequiredSession } from "@/server/auth-session";
 import { getServerTRPCCaller } from "@/server/api/caller";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Sessions",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function SessionsLayout({
   children,

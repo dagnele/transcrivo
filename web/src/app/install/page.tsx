@@ -10,6 +10,18 @@ import { Button } from "@/components/ui/button";
 export const metadata: Metadata = {
   title: "Install CLI",
   description: "Install the Transcrivo CLI from the latest release binaries.",
+  alternates: {
+    canonical: "/install",
+  },
+  openGraph: {
+    title: "Install the Transcrivo CLI",
+    description: "Install the Transcrivo CLI from the latest release binaries.",
+    url: "/install",
+  },
+  twitter: {
+    title: "Install the Transcrivo CLI",
+    description: "Install the Transcrivo CLI from the latest release binaries.",
+  },
 };
 
 const APP_ORIGIN = "https://transcrivo.live";

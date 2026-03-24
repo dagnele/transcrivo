@@ -5,6 +5,7 @@ import { AuthProvider } from "@/components/providers/auth-provider";
 import { TRPCReactProvider } from "@/components/providers/trpc-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { getSiteUrl } from "@/lib/site";
 
 import "./globals.css";
 
@@ -20,11 +21,35 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: getSiteUrl(),
   title: {
     default: "Transcrivo",
     template: "%s | Transcrivo",
   },
-  description: "Live interview transcript viewer.",
+  description:
+    "Transcribe live conversations locally with Whisper, stream them to the web, and get transcript-grounded AI help in real time.",
+  applicationName: "Transcrivo",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "Transcrivo",
+    title: "Transcrivo",
+    description:
+      "Transcribe live conversations locally with Whisper, stream them to the web, and get transcript-grounded AI help in real time.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Transcrivo",
+    description:
+      "Transcribe live conversations locally with Whisper, stream them to the web, and get transcript-grounded AI help in real time.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -22,6 +23,26 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SiteHeader } from "@/components/site-header";
 import { getOptionalSession } from "@/server/auth-session";
+
+export const metadata: Metadata = {
+  title: "Local Whisper Transcription With Live AI Assistance",
+  description:
+    "Run local Whisper transcription during interviews and meetings, stream transcripts live, and get transcript-grounded AI assistance in your browser.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "Transcrivo",
+    description:
+      "Run local Whisper transcription during interviews and meetings, stream transcripts live, and get transcript-grounded AI assistance in your browser.",
+    url: "/",
+  },
+  twitter: {
+    title: "Transcrivo",
+    description:
+      "Run local Whisper transcription during interviews and meetings, stream transcripts live, and get transcript-grounded AI assistance in your browser.",
+  },
+};
 
 export default async function HomePage() {
   const session = await getOptionalSession();

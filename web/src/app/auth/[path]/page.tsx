@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { AuthView } from "@daveyplate/better-auth-ui";
 import { authViewPaths } from "@daveyplate/better-auth-ui/server";
 import { headers } from "next/headers";
@@ -7,6 +8,14 @@ import { auth } from "@/lib/auth";
 import { SiteHeader } from "@/components/site-header";
 
 export const dynamicParams = false;
+
+export const metadata: Metadata = {
+  title: "Sign In",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export function generateStaticParams() {
   return Object.values(authViewPaths).map((path) => ({ path }));
