@@ -90,6 +90,7 @@ Expected secret names include:
 
 - `DATABASE_URL`
 - `BETTER_AUTH_URL`
+- `APP_BASE_URL` (optional, used for email/site links)
 - `AUTH_EMAIL_FROM`
 - `RESEND_API_KEY` (optional in local dev, required for real email delivery)
 

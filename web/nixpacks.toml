@@ -1,0 +1,17 @@
+[phases.setup]
+nixPkgs = ["curl", "gnupg", "unzip", "nodejs_22"]
+cmds = [
+  "curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local /bin/bash -s -- bun-v1.3.3",
+  "curl -Ls https://cli.doppler.com/install.sh | sh"
+]
+
+[phases.install]
+dependsOn = ["setup"]
+cmds = ["/usr/local/bin/bun i --no-save"]
+
+[phases.build]
+dependsOn = ["install"]
+cmds = ["npx next build --turbopack"]
+
+[start]
+cmd = "doppler run -- sh -c 'NODE_ENV=production /usr/local/bin/bun server.ts'"
