@@ -1,0 +1,67 @@
+name: Build CLI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-cli.yml'
+      - 'cli/**'
+  pull_request:
+    paths:
+      - '.github/workflows/build-cli.yml'
+      - 'cli/**'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            os: windows
+            artifact_name: transcrivo-windows
+            artifact_path: cli/target/release/transcrivo.exe
+          - runner: ubuntu-latest
+            os: linux
+            artifact_name: transcrivo-linux
+            artifact_path: cli/target/release/transcrivo
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake clang libpipewire-0.3-dev libspa-0.2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install LLVM (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          winget install --id LLVM.LLVM --exact --accept-source-agreements --accept-package-agreements --silent
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Verify toolchain
+        run: |
+          cargo --version
+          cmake --version
+          clang --version
+
+      - name: Build CLI
+        working-directory: cli
+        run: cargo build --release
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
