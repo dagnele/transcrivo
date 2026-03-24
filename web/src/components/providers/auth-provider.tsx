@@ -19,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }}
       Link={Link}
       redirectTo="/sessions"
+      account={{ basePath: "/sessions/account" }}
       emailVerification={{
         otp: true,
       }}
