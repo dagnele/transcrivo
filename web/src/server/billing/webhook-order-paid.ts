@@ -8,7 +8,7 @@ export function resolveOrderPaidGrant(input: ResolveOrderPaidGrantInput): boolea
     return false;
   }
 
-  if (input.existingOrderStatus && input.existingOrderStatus !== "paid") {
+  if (input.existingOrderStatus) {
     return true;
   }
 

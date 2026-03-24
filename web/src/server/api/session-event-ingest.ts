@@ -214,10 +214,7 @@ export async function ingestSessionEvent(input: unknown) {
     });
   }
 
-  const checkedSession =
-    parsedInput.data.type === "session.started"
-      ? session
-      : await assertSessionAcceptsCliTraffic(session);
+  const checkedSession = await assertSessionAcceptsCliTraffic(session);
   const now = new Date();
 
   if (
@@ -258,6 +255,15 @@ export async function ingestSessionEvent(input: unknown) {
 
   const nextStatus = getNextSessionStatus(session.status, parsedInput.data.type);
 
+  const pendingEvent = {
+    id: generateRecordId(),
+    sessionId: parsedInput.data.sessionId,
+    sequence: nextSequence,
+    type: parsedInput.data.type,
+    createdAt: now,
+    payload: parsedInput.data.payload,
+  };
+
   const event = isPartialEvent
     ? pendingEvent
     : (
@@ -267,36 +273,18 @@ export async function ingestSessionEvent(input: unknown) {
           .returning()
       )[0];
 
-  if (
-    !isPartialEvent &&
-    (nextStatus !== checkedSession.status || parsedInput.data.type === "session.started")
-  ) {
-    const startedAt =
-      parsedInput.data.type === "session.started"
-        ? checkedSession.startedAt ?? event.createdAt
-        : checkedSession.startedAt;
-    const expiresAt =
-      parsedInput.data.type === "session.started"
-        ? checkedSession.expiresAt ??
-          calculateSessionExpiresAt(
-            startedAt ?? event.createdAt,
-            sessionAccessKind,
-          )
-        : checkedSession.expiresAt;
-
+  if (!isPartialEvent && nextStatus !== checkedSession.status) {
     await db
       .update(sessions)
       .set({
         status: nextStatus,
-        accessKind: sessionAccessKind,
-        startedAt,
+        startedAt: checkedSession.startedAt,
         endedAt:
           parsedInput.data.type === "session.ended" ||
           parsedInput.data.type === "session.failed"
             ? event.createdAt
             : checkedSession.endedAt,
-        expiresAt,
-        trialEndsAt,
+        expiresAt: checkedSession.expiresAt,
       })
       .where(eq(sessions.id, parsedInput.data.sessionId));
   }

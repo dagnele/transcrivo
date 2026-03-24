@@ -61,14 +61,14 @@ describe("assignDraftSessionAccess", () => {
         consumePaidCredit: async () => false,
         consumeTrial: async () => false,
       }),
-    ).rejects.toMatchObject<Partial<TRPCError>>({
+    ).rejects.toMatchObject({
       code: "FORBIDDEN",
-    });
+    } satisfies Partial<TRPCError>);
   });
 
   it("handles concurrent draft starts with a single paid credit", async () => {
     let credits = 1;
-    let trialUsedAt: Date | null = null;
+    let trialUsedAt: Date | null = null as Date | null;
 
     const createAttempt = () =>
       assignDraftSessionAccess({
