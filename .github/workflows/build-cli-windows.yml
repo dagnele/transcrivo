@@ -45,5 +45,5 @@ jobs:
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cheatcode-windows
-          path: cli/target/release/cheatcode.exe
+          name: transcrivo-windows
+          path: cli/target/release/transcrivo.exe

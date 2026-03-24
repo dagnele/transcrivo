@@ -1,4 +1,4 @@
-# Cheatcode Agent Guide
+# Transcrivo Agent Guide
 
 - Source of truth for coding agents in this repo.
 - No `.cursorrules`, `.cursor/rules/`, or `.github/copilot-instructions.md` exist.
@@ -18,7 +18,7 @@
 - Single Rust test by name: `cd cli && cargo test backend_url_accepts_websocket_urls`
 - Single integration file: `cd cli && cargo test --test websocket_client`
 - Single test in file: `cd cli && cargo test --test websocket_client connect_send_and_receive_ready`
-- Ignored smoke test: `cd cli && CHEATCODE_WHISPER_SMOKE_MODEL_PATH=/abs/path/to/ggml-small.en.bin cargo test real_whisper_backend_smoke_test --test transcribe -- --ignored`
+- Ignored smoke test: `cd cli && TRANSCRIVO_WHISPER_SMOKE_MODEL_PATH=/abs/path/to/ggml-small.en.bin cargo test real_whisper_backend_smoke_test --test transcribe -- --ignored`
 - There is no dedicated web test runner yet; for web changes, usually run lint + type-check + build.
 
 ## Style

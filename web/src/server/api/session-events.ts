@@ -5,33 +5,33 @@ type SessionEventListener = (event: SessionEvent) => void;
 type SessionSolutionEventListener = (event: SessionSolutionEvent) => void;
 
 const globalSessionEvents = globalThis as typeof globalThis & {
-  __cheatcodeSessionListeners__?: Map<string, Set<SessionEventListener>>;
-  __cheatcodeSessionSequences__?: Map<string, number>;
-  __cheatcodeSessionSolutionListeners__?: Map<
+  __transcrivoSessionListeners__?: Map<string, Set<SessionEventListener>>;
+  __transcrivoSessionSequences__?: Map<string, number>;
+  __transcrivoSessionSolutionListeners__?: Map<
     string,
     Set<SessionSolutionEventListener>
   >;
-  __cheatcodeSessionSolutionVersions__?: Map<string, number>;
+  __transcrivoSessionSolutionVersions__?: Map<string, number>;
 };
 
 const sessionListeners =
-  globalSessionEvents.__cheatcodeSessionListeners__ ??
-  (globalSessionEvents.__cheatcodeSessionListeners__ = new Map<string, Set<SessionEventListener>>());
+  globalSessionEvents.__transcrivoSessionListeners__ ??
+  (globalSessionEvents.__transcrivoSessionListeners__ = new Map<string, Set<SessionEventListener>>());
 
 const sessionSequences =
-  globalSessionEvents.__cheatcodeSessionSequences__ ??
-  (globalSessionEvents.__cheatcodeSessionSequences__ = new Map<string, number>());
+  globalSessionEvents.__transcrivoSessionSequences__ ??
+  (globalSessionEvents.__transcrivoSessionSequences__ = new Map<string, number>());
 
 const sessionSolutionListeners =
-  globalSessionEvents.__cheatcodeSessionSolutionListeners__ ??
-  (globalSessionEvents.__cheatcodeSessionSolutionListeners__ = new Map<
+  globalSessionEvents.__transcrivoSessionSolutionListeners__ ??
+  (globalSessionEvents.__transcrivoSessionSolutionListeners__ = new Map<
     string,
     Set<SessionSolutionEventListener>
   >());
 
 const sessionSolutionVersions =
-  globalSessionEvents.__cheatcodeSessionSolutionVersions__ ??
-  (globalSessionEvents.__cheatcodeSessionSolutionVersions__ = new Map<string, number>());
+  globalSessionEvents.__transcrivoSessionSolutionVersions__ ??
+  (globalSessionEvents.__transcrivoSessionSolutionVersions__ = new Map<string, number>());
 
 export function getLastPublishedSessionSequence(sessionId: string) {
   return sessionSequences.get(sessionId) ?? 0;

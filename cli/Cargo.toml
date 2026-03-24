@@ -1,8 +1,8 @@
 [package]
-name = "cheatcode-cli-rs"
+name = "transcrivo-cli-rs"
 version = "0.1.2"
 edition = "2021"
-default-run = "cheatcode"
+default-run = "transcrivo"
 
 [features]
 default = []
@@ -11,7 +11,7 @@ whisper-gpu-vulkan = ["whisper-gpu", "whisper-rs/vulkan"]
 whisper-gpu-cuda = ["whisper-gpu", "whisper-rs/cuda"]
 
 [[bin]]
-name = "cheatcode"
+name = "transcrivo"
 path = "src/main.rs"
 
 [dependencies]

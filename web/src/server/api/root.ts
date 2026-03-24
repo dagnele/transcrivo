@@ -5,7 +5,7 @@ export const appRouter = createTRPCRouter({
   health: publicProcedure.query(() => {
     return {
       ok: true,
-      service: "cheatcode-web",
+      service: "transcrivo-web",
       now: new Date().toISOString(),
     };
   }),

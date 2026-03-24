@@ -85,7 +85,7 @@ export function CliSetupDialog({
 
   const command = token
     ? [
-        "cheatcode run",
+        "transcrivo run",
         `  --token ${token}`,
         "  --backend-url ws://localhost:3000/ws",
       ].join(" \\\n")
@@ -141,7 +141,7 @@ export function CliSetupDialog({
             <p className="text-xs font-medium text-muted-foreground">
               3. List available audio devices
             </p>
-            <CopyBlock value="cheatcode devices" />
+            <CopyBlock value="transcrivo devices" />
           </div>
 
           <div className="space-y-2">

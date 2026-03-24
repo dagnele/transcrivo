@@ -13,13 +13,13 @@ const resendApiUrl = "https://api.resend.com/emails";
 function getEmailSubject(type: VerificationEmailInput["type"]) {
   switch (type) {
     case "email-verification":
-      return "Verify your Cheatcode email";
+      return "Verify your Transcrivo email";
     case "sign-in":
-      return "Your Cheatcode sign-in code";
+      return "Your Transcrivo sign-in code";
     case "forget-password":
-      return "Your Cheatcode password reset code";
+      return "Your Transcrivo password reset code";
     case "change-email":
-      return "Confirm your new Cheatcode email";
+      return "Confirm your new Transcrivo email";
   }
 }
 

@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use cheatcode_cli_rs::audio::capture::CaptureSource;
-use cheatcode_cli_rs::audio::preprocess::AudioChunk;
-use cheatcode_cli_rs::session::manager::SessionManager;
-use cheatcode_cli_rs::session::models::Source;
-use cheatcode_cli_rs::transcribe::pipeline::TranscriptPipeline;
-use cheatcode_cli_rs::transcribe::whisper_cpp::{
+use transcrivo_cli_rs::audio::capture::CaptureSource;
+use transcrivo_cli_rs::audio::preprocess::AudioChunk;
+use transcrivo_cli_rs::session::manager::SessionManager;
+use transcrivo_cli_rs::session::models::Source;
+use transcrivo_cli_rs::transcribe::pipeline::TranscriptPipeline;
+use transcrivo_cli_rs::transcribe::whisper_cpp::{
     TranscriptSegment, TranscriptionError, WhisperBackend, WhisperCppAdapter, WhisperCppConfig,
 };
-use cheatcode_cli_rs::transport::protocol::MessageType;
+use transcrivo_cli_rs::transport::protocol::MessageType;
 
-const WHISPER_SMOKE_MODEL_PATH_ENV: &str = "CHEATCODE_WHISPER_SMOKE_MODEL_PATH";
+const WHISPER_SMOKE_MODEL_PATH_ENV: &str = "TRANSCRIVO_WHISPER_SMOKE_MODEL_PATH";
 
 #[derive(Debug)]
 struct FakeBackend {
@@ -434,7 +434,7 @@ fn pipeline_rotates_utterance_id_after_forced_cutoff_flush() {
 }
 
 #[test]
-#[ignore = "requires CHEATCODE_WHISPER_SMOKE_MODEL_PATH to point to a local ggml whisper model"]
+#[ignore = "requires TRANSCRIVO_WHISPER_SMOKE_MODEL_PATH to point to a local ggml whisper model"]
 fn real_whisper_backend_smoke_test() {
     let model_path = std::env::var(WHISPER_SMOKE_MODEL_PATH_ENV)
         .expect("smoke model path env var should be set when running ignored smoke test");

@@ -44,7 +44,7 @@ pub struct DownloadArgs {
 
     #[arg(
         long,
-        help = "Directory to store the downloaded model. Defaults to the standard Cheatcode app data models directory."
+        help = "Directory to store the downloaded model. Defaults to the standard Transcrivo app data models directory."
     )]
     pub output_dir: Option<PathBuf>,
 
@@ -98,7 +98,7 @@ fn status_models() -> Result<()> {
 
     if !models_dir.exists() {
         println!("Directory does not exist yet.");
-        println!("Run `cheatcode models download <model>` to install one.");
+        println!("Run `transcrivo models download <model>` to install one.");
         return Ok(());
     }
 
@@ -201,7 +201,7 @@ pub fn validate_model_name(model: &str) -> Result<()> {
     if KNOWN_MODELS.contains(&model) {
         Ok(())
     } else {
-        bail!("unsupported model `{model}`; run `cheatcode models list` to see available names")
+        bail!("unsupported model `{model}`; run `transcrivo models list` to see available names")
     }
 }
 

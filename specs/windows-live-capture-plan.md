@@ -1,4 +1,4 @@
-# Windows Live Capture Plan for `cheatcode run`
+# Windows Live Capture Plan for `transcrivo run`
 
 ## Context
 

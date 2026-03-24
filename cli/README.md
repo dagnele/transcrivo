@@ -1,6 +1,6 @@
-# Cheatcode CLI (Rust)
+# Transcrivo CLI (Rust)
 
-This directory contains the Rust implementation of the local `cheatcode` CLI.
+This directory contains the Rust implementation of the local `transcrivo` CLI for Transcrivo.
 
 ## Current status
 
@@ -214,10 +214,10 @@ cargo run -- models list
 cargo run -- models status
 ```
 
-By default, models are stored in the standard Cheatcode app data directory:
+By default, models are stored in the standard Transcrivo app data directory:
 
-- Linux: `$XDG_DATA_HOME/cheatcode/models` or `~/.local/share/cheatcode/models`
-- Windows: `%LOCALAPPDATA%\Cheatcode\models`
+- Linux: `$XDG_DATA_HOME/transcrivo/models` or `~/.local/share/transcrivo/models`
+- Windows: `%LOCALAPPDATA%\Transcrivo\models`
 
 Download a model:
 
@@ -238,22 +238,22 @@ cargo run -- run \
 Linux/macOS shell:
 
 ```bash
-export CHEATCODE_WHISPER_MODEL_DIR=/absolute/path/to/models
-export CHEATCODE_WHISPER_MODEL_PATH=/absolute/path/to/ggml-small.en.bin
+export TRANSCRIVO_WHISPER_MODEL_DIR=/absolute/path/to/models
+export TRANSCRIVO_WHISPER_MODEL_PATH=/absolute/path/to/ggml-small.en.bin
 ```
 
 PowerShell:
 
 ```powershell
-$env:CHEATCODE_WHISPER_MODEL_DIR = 'C:\path\to\models'
-$env:CHEATCODE_WHISPER_MODEL_PATH = 'C:\path\to\ggml-small.en.bin'
+$env:TRANSCRIVO_WHISPER_MODEL_DIR = 'C:\path\to\models'
+$env:TRANSCRIVO_WHISPER_MODEL_PATH = 'C:\path\to\ggml-small.en.bin'
 ```
 
 Lookup order:
 
-- `CHEATCODE_WHISPER_MODEL_PATH`
-- `CHEATCODE_WHISPER_MODEL_DIR/ggml-<model>.bin`
-- standard Cheatcode models directory
+- `TRANSCRIVO_WHISPER_MODEL_PATH`
+- `TRANSCRIVO_WHISPER_MODEL_DIR/ggml-<model>.bin`
+- standard Transcrivo models directory
 - `./ggml-<model>.bin`
 
 ## Optional GPU build
@@ -299,7 +299,7 @@ Notes:
 There is also an opt-in integration-style smoke test for the real Whisper backend:
 
 ```bash
-export CHEATCODE_WHISPER_SMOKE_MODEL_PATH=/absolute/path/to/ggml-small.en.bin
+export TRANSCRIVO_WHISPER_SMOKE_MODEL_PATH=/absolute/path/to/ggml-small.en.bin
 cargo test real_whisper_backend_smoke_test --test transcribe -- --ignored
 ```
 

@@ -1,13 +1,13 @@
 #![cfg(target_os = "linux")]
 
-use cheatcode_cli_rs::audio::capture::{
+use transcrivo_cli_rs::audio::capture::{
     AudioCaptureWorker, CaptureConfig, CaptureSource, ProcessCaptureSpec,
 };
-use cheatcode_cli_rs::audio::devices::{
+use transcrivo_cli_rs::audio::devices::{
     AudioBackendTarget, AudioDevice, DeviceInventory, DeviceKind, PipeWireCaptureTargetKind,
     PipeWireTarget,
 };
-use cheatcode_cli_rs::audio::linux;
+use transcrivo_cli_rs::audio::linux;
 
 #[test]
 fn linux_source_captures_use_native_backends() {

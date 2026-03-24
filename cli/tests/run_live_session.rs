@@ -5,18 +5,18 @@ use serde_json::json;
 use tokio::net::TcpListener;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 
-use cheatcode_cli_rs::audio::capture::{
+use transcrivo_cli_rs::audio::capture::{
     AudioCaptureWorker, CaptureConfig, CaptureSource, ProcessCaptureSpec, SourceCaptures,
 };
-use cheatcode_cli_rs::commands::run::{
+use transcrivo_cli_rs::commands::run::{
     run_live_session_with_adapter_factory, SelectedDevices, TranscriptionConfig,
 };
-use cheatcode_cli_rs::session::manager::SessionManager;
-use cheatcode_cli_rs::session::models::Source;
-use cheatcode_cli_rs::transcribe::whisper_cpp::{TranscriptionError, WhisperCppAdapter};
-use cheatcode_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
-use cheatcode_cli_rs::transport::BackendWebSocketClient;
-use cheatcode_cli_rs::util::shutdown::ShutdownController;
+use transcrivo_cli_rs::session::manager::SessionManager;
+use transcrivo_cli_rs::session::models::Source;
+use transcrivo_cli_rs::transcribe::whisper_cpp::{TranscriptionError, WhisperCppAdapter};
+use transcrivo_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
+use transcrivo_cli_rs::transport::BackendWebSocketClient;
+use transcrivo_cli_rs::util::shutdown::ShutdownController;
 
 fn adapter_factory(
     _source: Source,

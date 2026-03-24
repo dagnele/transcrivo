@@ -4,11 +4,11 @@ use std::time::Duration;
 use chrono::{TimeZone, Utc};
 use serde_json::json;
 
-use cheatcode_cli_rs::session::manager::{InboundPayload, SessionManager};
-use cheatcode_cli_rs::session::models::{SessionState, Source, TranscriptMessageType};
-use cheatcode_cli_rs::session::sequence::Sequence;
-use cheatcode_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
-use cheatcode_cli_rs::util::time::SessionClock;
+use transcrivo_cli_rs::session::manager::{InboundPayload, SessionManager};
+use transcrivo_cli_rs::session::models::{SessionState, Source, TranscriptMessageType};
+use transcrivo_cli_rs::session::sequence::Sequence;
+use transcrivo_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
+use transcrivo_cli_rs::util::time::SessionClock;
 
 #[test]
 fn sequence_starts_at_one() {
@@ -193,6 +193,6 @@ fn empty_transcript_text_is_rejected() {
 
     assert_eq!(
         error,
-        cheatcode_cli_rs::transport::protocol::ProtocolError::InvalidPayload
+        transcrivo_cli_rs::transport::protocol::ProtocolError::InvalidPayload
     );
 }

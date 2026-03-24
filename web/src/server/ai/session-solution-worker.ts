@@ -30,12 +30,12 @@ type SessionGenerationState = {
 };
 
 const globalSessionSolutionWorker = globalThis as typeof globalThis & {
-  __cheatcodeSessionSolutionWorker__?: Map<string, SessionGenerationState>;
+  __transcrivoSessionSolutionWorker__?: Map<string, SessionGenerationState>;
 };
 
 const sessionGenerationState =
-  globalSessionSolutionWorker.__cheatcodeSessionSolutionWorker__ ??
-  (globalSessionSolutionWorker.__cheatcodeSessionSolutionWorker__ = new Map<
+  globalSessionSolutionWorker.__transcrivoSessionSolutionWorker__ ??
+  (globalSessionSolutionWorker.__transcrivoSessionSolutionWorker__ = new Map<
     string,
     SessionGenerationState
   >());

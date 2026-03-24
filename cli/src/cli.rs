@@ -3,8 +3,8 @@ use clap::{Parser, Subcommand};
 use crate::commands;
 
 #[derive(Debug, Parser)]
-#[command(name = "cheatcode")]
-#[command(about = "Local Cheatcode CLI for audio capture and transcription")]
+#[command(name = "transcrivo")]
+#[command(about = "Local Transcrivo CLI for audio capture and transcription")]
 pub struct Cli {
     #[arg(long, global = true, help = "Enable verbose logging")]
     pub verbose: bool,

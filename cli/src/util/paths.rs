@@ -3,23 +3,23 @@ use std::path::PathBuf;
 
 pub fn default_models_dir() -> Option<PathBuf> {
     if let Some(xdg_data_home) = env::var_os("XDG_DATA_HOME") {
-        return Some(PathBuf::from(xdg_data_home).join("cheatcode/models"));
+        return Some(PathBuf::from(xdg_data_home).join("transcrivo/models"));
     }
 
     #[cfg(target_os = "linux")]
     {
         if let Some(home) = env::var_os("HOME") {
-            return Some(PathBuf::from(home).join(".local/share/cheatcode/models"));
+            return Some(PathBuf::from(home).join(".local/share/transcrivo/models"));
         }
     }
 
     #[cfg(target_os = "windows")]
     {
         if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
-            return Some(PathBuf::from(local_app_data).join("Cheatcode/models"));
+            return Some(PathBuf::from(local_app_data).join("Transcrivo/models"));
         }
         if let Some(profile) = env::var_os("USERPROFILE") {
-            return Some(PathBuf::from(profile).join("AppData/Local/Cheatcode/models"));
+            return Some(PathBuf::from(profile).join("AppData/Local/Transcrivo/models"));
         }
     }
 

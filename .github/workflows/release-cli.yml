@@ -4,91 +4,151 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-artifact:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            os: windows
+            backend: cpu
+            features: ""
+            artifact_name: transcrivo-windows-x86_64-cpu.exe
+            artifact_upload_name: release-windows-cpu
+          - runner: windows-latest
+            os: windows
+            backend: vulkan
+            features: --features whisper-gpu-vulkan
+            artifact_name: transcrivo-windows-x86_64-vulkan.exe
+            artifact_upload_name: release-windows-vulkan
+          - runner: windows-latest
+            os: windows
+            backend: cuda
+            features: --features whisper-gpu-cuda
+            artifact_name: transcrivo-windows-x86_64-cuda.exe
+            artifact_upload_name: release-windows-cuda
+          - runner: ubuntu-latest
+            os: linux
+            backend: cpu
+            features: ""
+            artifact_name: transcrivo-linux-x86_64-cpu
+            artifact_upload_name: release-linux-cpu
+          - runner: ubuntu-latest
+            os: linux
+            backend: vulkan
+            features: --features whisper-gpu-vulkan
+            artifact_name: transcrivo-linux-x86_64-vulkan
+            artifact_upload_name: release-linux-vulkan
+          - runner: ubuntu-latest
+            os: linux
+            backend: cuda
+            features: --features whisper-gpu-cuda
+            artifact_name: transcrivo-linux-x86_64-cuda
+            artifact_upload_name: release-linux-cuda
+
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Install Linux base dependencies
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake clang libpipewire-0.3-dev libspa-0.2-dev
+
+      - name: Install Linux Vulkan dependencies
+        if: matrix.os == 'linux' && matrix.backend == 'vulkan'
+        run: |
+          sudo apt-get install -y libvulkan-dev
+
+      - name: Install Linux CUDA dependencies
+        if: matrix.os == 'linux' && matrix.backend == 'cuda'
+        run: |
+          sudo apt-get install -y nvidia-cuda-toolkit
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install LLVM with winget
+        if: matrix.os == 'windows'
         shell: pwsh
         run: |
           winget install --id LLVM.LLVM --exact --accept-source-agreements --accept-package-agreements --silent
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
 
-      - name: Verify toolchain
+      - name: Install Vulkan SDK with winget
+        if: matrix.os == 'windows' && matrix.backend == 'vulkan'
+        shell: pwsh
+        run: |
+          winget install --id KhronosGroup.VulkanSDK --exact --accept-source-agreements --accept-package-agreements --silent
+          $vulkanSdk = Get-ChildItem "C:\VulkanSDK" | Sort-Object Name -Descending | Select-Object -First 1
+          echo "VULKAN_SDK=$($vulkanSdk.FullName)" >> $env:GITHUB_ENV
+          echo "$($vulkanSdk.FullName)\Bin" >> $env:GITHUB_PATH
+
+      - name: Install CUDA toolkit with winget
+        if: matrix.os == 'windows' && matrix.backend == 'cuda'
+        shell: pwsh
+        run: |
+          winget install --id Nvidia.CUDA --exact --accept-source-agreements --accept-package-agreements --silent
+          $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" | Sort-Object Name -Descending | Select-Object -First 1
+          echo "CUDA_PATH=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
+          echo "$($cudaRoot.FullName)\bin" >> $env:GITHUB_PATH
+          echo "$($cudaRoot.FullName)\libnvvp" >> $env:GITHUB_PATH
+
+      - name: Verify toolchain on Linux
+        if: matrix.os == 'linux'
+        run: |
+          cargo --version
+          cmake --version
+          clang --version
+
+      - name: Verify toolchain on Windows
+        if: matrix.os == 'windows'
         shell: pwsh
         run: |
           cargo --version
           cmake --version
           clang --version
 
-      - name: Build CLI
+      - name: Build CLI on Linux
+        if: matrix.os == 'linux'
+        working-directory: cli
+        run: cargo build --release ${{ matrix.features }}
+
+      - name: Build CLI on Windows
+        if: matrix.os == 'windows'
         working-directory: cli
         shell: pwsh
-        run: cargo build --release
+        run: cargo build --release ${{ matrix.features }}
 
-      - name: Prepare release artifact
+      - name: Prepare Linux release artifact
+        if: matrix.os == 'linux'
+        run: |
+          cp cli/target/release/transcrivo ${{ matrix.artifact_name }}
+
+      - name: Prepare Windows release artifact
+        if: matrix.os == 'windows'
         shell: pwsh
         run: |
-          Copy-Item "cli/target/release/cheatcode.exe" "cheatcode-windows-x86_64.exe"
+          Copy-Item "cli/target/release/transcrivo.exe" "${{ matrix.artifact_name }}"
 
-      - name: Upload Windows artifact
+      - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-windows
-          path: cheatcode-windows-x86_64.exe
-
-  build-linux:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install Linux build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config cmake clang libpipewire-0.3-dev libspa-0.2-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Verify toolchain
-        run: |
-          cargo --version
-          cmake --version
-          clang --version
-
-      - name: Build CLI
-        working-directory: cli
-        run: cargo build --release
-
-      - name: Prepare release artifact
-        run: |
-          cp cli/target/release/cheatcode cheatcode-linux-x86_64
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-linux
-          path: cheatcode-linux-x86_64
+          name: ${{ matrix.artifact_upload_name }}
+          path: ${{ matrix.artifact_name }}
 
   publish-release:
     runs-on: ubuntu-latest
     needs:
-      - build-windows
-      - build-linux
+      - build-artifact
 
     steps:
       - name: Download release artifacts
@@ -100,6 +160,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-artifacts/release-windows/cheatcode-windows-x86_64.exe
-            release-artifacts/release-linux/cheatcode-linux-x86_64
+            release-artifacts/release-windows-cpu/transcrivo-windows-x86_64-cpu.exe
+            release-artifacts/release-windows-vulkan/transcrivo-windows-x86_64-vulkan.exe
+            release-artifacts/release-windows-cuda/transcrivo-windows-x86_64-cuda.exe
+            release-artifacts/release-linux-cpu/transcrivo-linux-x86_64-cpu
+            release-artifacts/release-linux-vulkan/transcrivo-linux-x86_64-vulkan
+            release-artifacts/release-linux-cuda/transcrivo-linux-x86_64-cuda
           generate_release_notes: true

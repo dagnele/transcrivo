@@ -109,13 +109,13 @@ pub struct RunArgs {
 
     #[arg(
         long,
-        help = "Explicit microphone device id. Use `cheatcode devices` to inspect ids."
+        help = "Explicit microphone device id. Use `transcrivo devices` to inspect ids."
     )]
     pub mic_device: Option<String>,
 
     #[arg(
         long,
-        help = "Explicit system audio device id. Use `cheatcode devices` to inspect ids."
+        help = "Explicit system audio device id. Use `transcrivo devices` to inspect ids."
     )]
     pub system_device: Option<String>,
 

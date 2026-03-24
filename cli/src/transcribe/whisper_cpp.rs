@@ -13,8 +13,8 @@ use crate::util::paths::default_models_dir;
 use crate::util::shutdown::ShutdownController;
 
 pub const DEFAULT_MODEL_NAME: &str = "small.en";
-pub const DEFAULT_MODEL_DIR_ENV: &str = "CHEATCODE_WHISPER_MODEL_DIR";
-pub const DEFAULT_MODEL_PATH_ENV: &str = "CHEATCODE_WHISPER_MODEL_PATH";
+pub const DEFAULT_MODEL_DIR_ENV: &str = "TRANSCRIVO_WHISPER_MODEL_DIR";
+pub const DEFAULT_MODEL_PATH_ENV: &str = "TRANSCRIVO_WHISPER_MODEL_PATH";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WhisperCppConfig {

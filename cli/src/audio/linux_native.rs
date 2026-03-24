@@ -159,7 +159,7 @@ fn start_pipewire_runtime(
             props.insert("target.object", object_serial.to_string());
         }
 
-        let stream = pw::stream::StreamRc::new(core, "cheatcode-native-capture", props)
+        let stream = pw::stream::StreamRc::new(core, "transcrivo-native-capture", props)
             .map_err(|error| CaptureError::SpawnFailed(error.to_string()))?;
 
         let negotiated_format = Rc::new(RefCell::new(AudioInfoRaw::new()));

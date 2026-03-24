@@ -68,7 +68,7 @@ type SessionsShellProps = {
   sessionsError: string | null;
 };
 
-const SIDEBAR_STORAGE_KEY = "cheatcode.sessions-sidebar-collapsed";
+const SIDEBAR_STORAGE_KEY = "transcrivo.sessions-sidebar-collapsed";
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
 const DEFAULT_SESSION_TYPE: SessionType = "coding";
 const DEFAULT_SESSION_LANGUAGE: SessionLanguage = "python";

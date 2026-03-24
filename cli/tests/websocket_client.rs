@@ -9,8 +9,8 @@ use tokio_tungstenite::{
     tungstenite::Message,
 };
 
-use cheatcode_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
-use cheatcode_cli_rs::transport::{BackendWebSocketClient, DEFAULT_READY_TIMEOUT_SECONDS};
+use transcrivo_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
+use transcrivo_cli_rs::transport::{BackendWebSocketClient, DEFAULT_READY_TIMEOUT_SECONDS};
 
 struct AuthHeaderRecorder {
     auth_header: Arc<Mutex<Option<String>>>,
@@ -275,7 +275,7 @@ async fn backend_error_preserves_error_code_while_waiting_for_ready() {
     server.await.expect("join server");
 
     match error {
-        cheatcode_cli_rs::transport::WebSocketClientError::BackendSession(error) => {
+        transcrivo_cli_rs::transport::WebSocketClientError::BackendSession(error) => {
             assert_eq!(error.message, "Session has expired.");
             assert_eq!(error.code.as_deref(), Some("session_expired"));
         }

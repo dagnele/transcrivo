@@ -1,17 +1,17 @@
-use cheatcode_cli_rs::audio::capture::{pcm16le_from_f32_frames, CaptureSource};
-use cheatcode_cli_rs::audio::devices::{
+use transcrivo_cli_rs::audio::capture::{pcm16le_from_f32_frames, CaptureSource};
+use transcrivo_cli_rs::audio::devices::{
     format_device_inventory, get_default_microphone, get_default_system_source,
     get_microphone_by_id, get_system_source_by_id, AudioBackendTarget, AudioDevice,
     DeviceInventory, DeviceKind,
 };
 #[cfg(target_os = "linux")]
-use cheatcode_cli_rs::audio::devices::{PipeWireCaptureTargetKind, PipeWireTarget};
+use transcrivo_cli_rs::audio::devices::{PipeWireCaptureTargetKind, PipeWireTarget};
 #[cfg(target_os = "windows")]
-use cheatcode_cli_rs::audio::windows;
+use transcrivo_cli_rs::audio::windows;
 #[cfg(target_os = "windows")]
-use cheatcode_cli_rs::audio::windows_native;
+use transcrivo_cli_rs::audio::windows_native;
 #[cfg(target_os = "linux")]
-use cheatcode_cli_rs::audio::{linux, linux_native};
+use transcrivo_cli_rs::audio::{linux, linux_native};
 #[cfg(target_os = "linux")]
 use serde_json::json;
 

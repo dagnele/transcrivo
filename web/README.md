@@ -1,6 +1,6 @@
-# Cheatcode Web
+# Transcrivo Web
 
-This directory contains the Bun-managed Next.js app for the Cheatcode web MVP.
+This directory contains the Bun-managed Next.js app for the Transcrivo web MVP.
 
 ## Current stack
 
@@ -47,7 +47,7 @@ The app expects `DATABASE_URL` to be set.
 Example:
 
 ```bash
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/cheatcode_web
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/transcrivo_web
 ```
 
 Drizzle commands:

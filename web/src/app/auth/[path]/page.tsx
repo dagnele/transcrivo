@@ -30,7 +30,7 @@ export default async function AuthPage({ params }: AuthPageProps) {
       <div className="w-full max-w-sm">
         <div className="mb-6 space-y-1.5 px-1">
           <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground">
-            Cheatcode
+            Transcrivo
           </p>
           <h1 className="text-xl font-semibold tracking-tight">
             Sign in to your workspace

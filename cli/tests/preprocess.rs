@@ -1,9 +1,9 @@
-use cheatcode_cli_rs::audio::capture::{CaptureSource, PcmChunk};
-use cheatcode_cli_rs::audio::preprocess::{
+use transcrivo_cli_rs::audio::capture::{CaptureSource, PcmChunk};
+use transcrivo_cli_rs::audio::preprocess::{
     downmix_to_mono, frames_to_ms, ms_to_frames, normalize_audio, pcm16le_to_f32, resample_audio,
     PreprocessConfig, PreprocessState,
 };
-use cheatcode_cli_rs::audio::vad::{should_keep_chunk, VadConfig};
+use transcrivo_cli_rs::audio::vad::{should_keep_chunk, VadConfig};
 
 #[test]
 fn pcm16le_round_trip_shape() {

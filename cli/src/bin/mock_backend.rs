@@ -7,7 +7,7 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 #[derive(Debug, Parser)]
 #[command(name = "mock_backend")]
-#[command(about = "Run a local mock websocket backend for cheatcode")]
+#[command(about = "Run a local mock websocket backend for transcrivo")]
 struct Args {
     #[arg(long, default_value = "127.0.0.1")]
     host: String,

@@ -1,13 +1,13 @@
-use cheatcode_cli_rs::audio::capture::{
+use transcrivo_cli_rs::audio::capture::{
     AudioCaptureWorker, CaptureConfig, CaptureSource, SourceCaptures,
 };
-use cheatcode_cli_rs::commands::models::validate_model_name;
-use cheatcode_cli_rs::commands::run::{
+use transcrivo_cli_rs::commands::models::validate_model_name;
+use transcrivo_cli_rs::commands::run::{
     build_session_start_message, build_transcription_config, describe_selected_devices,
     validate_backend_url, validate_required_text, RunArgs, SelectedDevices,
 };
-use cheatcode_cli_rs::session::manager::SessionManager;
-use cheatcode_cli_rs::session::models::Source;
+use transcrivo_cli_rs::session::manager::SessionManager;
+use transcrivo_cli_rs::session::models::Source;
 
 #[test]
 fn backend_url_accepts_websocket_urls() {
@@ -51,7 +51,7 @@ fn whisper_model_name_rejects_unknown_values() {
 
     assert_eq!(
         error.to_string(),
-        "unsupported model `unknown-model`; run `cheatcode models list` to see available names"
+        "unsupported model `unknown-model`; run `transcrivo models list` to see available names"
     );
 }
 

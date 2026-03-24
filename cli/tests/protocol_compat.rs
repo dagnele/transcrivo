@@ -1,4 +1,4 @@
-use cheatcode_cli_rs::transport::protocol::{
+use transcrivo_cli_rs::transport::protocol::{
     parse_message, serialize_message, MessageEnvelope, MessageType, ProtocolError,
 };
 use serde_json::json;

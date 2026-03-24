@@ -1,6 +1,6 @@
-# Cheatcode
+# Transcrivo
 
-Cheatcode is a live transcript companion with AI assistance.
+Transcrivo is a live transcript companion with AI assistance.
 
 It captures a conversation in real time, streams transcript events to a web app, and turns those events into a structured session history plus AI-generated assistance grounded in the transcript. The project is split into a local CLI and a web application that share the same session protocol.
 
