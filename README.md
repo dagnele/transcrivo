@@ -2,6 +2,9 @@
 
 Transcrivo is a live transcript companion with AI assistance.
 
+Unless otherwise noted, the original code in this repository is source-available
+under the Business Source License 1.1 in `LICENSE`.
+
 It captures a conversation in real time, streams transcript events to a web app, and turns those events into a structured session history plus AI-generated assistance grounded in the transcript. The project is split into a local CLI and a web application that share the same session protocol.
 
 ## Use Case
@@ -33,3 +36,11 @@ This is useful when you want a grounded, real-time companion that can follow wha
 - Read `web/README.md` for web setup, database, routes, and websocket ingest details.
 - Read `cli/README.md` for CLI runtime flows, whisper model setup, and platform-specific notes.
 - Read `AGENTS.md` for build/test commands and repo conventions used by coding agents.
+
+## License
+
+- `BSL 1.1` applies to the original repository contents today.
+- Private self-hosting and internal business use are allowed under the Additional Use Grant in `LICENSE`.
+- The code converts to `Apache-2.0` on `2030-03-24`, or earlier for a given version if required by the standard `BSL 1.1` timing rules.
+- Trademarks, product names, and logos are not licensed; see `TRADEMARKS.md`.
+- Contributions are accepted under the contribution terms in `CONTRIBUTING.md`.
