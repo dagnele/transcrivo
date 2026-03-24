@@ -24,6 +24,7 @@ import { getConnectionLabel } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
 
 const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
+const LOCAL_TRIAL_DURATION_MS = 5 * 60 * 1000;
 
 type SessionLiveViewProps = {
   session: Session;
@@ -35,6 +36,8 @@ type LifecycleState = {
   status: SessionStatus;
   startedAt: Date | null;
   expiresAt: Date | null;
+  accessKind: string | null;
+  trialEndsAt: Date | null;
 };
 
 type SolutionState = {
@@ -45,18 +48,25 @@ type SolutionState = {
 
 function applyLifecycleEvent(state: LifecycleState, event: SessionEvent): LifecycleState {
   if (event.type === "session.started") {
+    const sessionDuration =
+      state.accessKind === "trial" ? LOCAL_TRIAL_DURATION_MS : LOCAL_SESSION_DURATION_MS;
+    const startedAt = state.startedAt ?? event.createdAt;
     return {
       ...state,
       status: "live",
-      startedAt: state.startedAt ?? event.createdAt,
-      expiresAt: state.expiresAt ?? new Date(event.createdAt.getTime() + LOCAL_SESSION_DURATION_MS),
+      startedAt,
+      expiresAt: state.expiresAt ?? new Date(event.createdAt.getTime() + sessionDuration),
+      trialEndsAt:
+        state.accessKind === "trial"
+          ? state.trialEndsAt ?? new Date(startedAt.getTime() + LOCAL_TRIAL_DURATION_MS)
+          : state.trialEndsAt,
     };
   }
 
   if (event.type === "session.ended") {
     const reason = typeof event.payload.reason === "string" ? event.payload.reason : null;
 
-    if (reason === "session-expired") {
+    if (reason === "session-expired" || reason === "trial-expired") {
       return {
         ...state,
         status: "expired",
@@ -187,6 +197,8 @@ export function SessionLiveView({
     status: session.status,
     startedAt: session.startedAt,
     expiresAt: session.expiresAt,
+    accessKind: session.accessKind,
+    trialEndsAt: session.trialEndsAt,
   });
   const [transcriptLatestSequence, setTranscriptLatestSequence] = useState(0);
   const [solutionState, setSolutionState] = useState(() => getInitialSolutionState(initialSolution));
@@ -247,10 +259,13 @@ export function SessionLiveView({
           queryClient.invalidateQueries({
             queryKey: trpc.session.byId.queryKey({ sessionId: session.id }),
           }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.billing.pathKey(),
+          }),
         ]);
       }
     },
-    [queryClient, session.id, trpc.session.byId, trpc.session.list],
+    [queryClient, session.id, trpc.billing, trpc.session.byId, trpc.session.list],
   );
 
   const solutionSubscription = useSubscription(
@@ -278,6 +293,8 @@ export function SessionLiveView({
         status={lifecycleState.status}
         startedAt={lifecycleState.startedAt}
         expiresAt={lifecycleState.expiresAt}
+        accessKind={lifecycleState.accessKind}
+        trialEndsAt={lifecycleState.trialEndsAt}
         onOpenCli={() => setCliDialogOpen(true)}
       />
 

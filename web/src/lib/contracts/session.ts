@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { sessionAccessKindValues } from "@/lib/contracts/billing";
+
 export const sessionStatusValues = ["draft", "live", "ended", "failed", "expired"] as const;
 
 export const sessionTypeValues = [
@@ -64,11 +66,15 @@ function refineSessionLanguage(
   }
 }
 
+export const sessionAccessKindSchema = z.enum(sessionAccessKindValues);
+
 export const sessionSchema = sessionBaseSchema
   .extend({
     id: sessionIdSchema,
     status: sessionStatusSchema,
     solutionEnabled: z.boolean(),
+    accessKind: sessionAccessKindSchema.nullable(),
+    trialEndsAt: z.date().nullable(),
     createdAt: z.date(),
     startedAt: z.date().nullable(),
     endedAt: z.date().nullable(),
@@ -116,4 +122,5 @@ export const paginatedSessionsSchema = z.object({
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
 export type SessionType = z.infer<typeof sessionTypeSchema>;
 export type SessionLanguage = z.infer<typeof sessionLanguageSchema>;
+export type SessionAccessKind = z.infer<typeof sessionAccessKindSchema>;
 export type Session = z.infer<typeof sessionSchema>;

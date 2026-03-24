@@ -34,7 +34,6 @@ import { db } from "@/server/db/client";
 import { sessionEvents, sessionSolutions, sessions } from "@/server/db/schema";
 import { generateSessionId } from "@/lib/ids";
 import { CLI_TOKEN_LIFETIME_MS, signSessionToken } from "@/server/token";
-
 function normalizeSessionSolution(
   solution: typeof sessionSolutions.$inferSelect,
 ): SessionSolutionContract {
@@ -66,6 +65,8 @@ export const sessionRouter = createTRPCRouter({
           language: input.language,
           status: "draft",
           solutionEnabled,
+          accessKind: null,
+          trialEndsAt: null,
         })
         .returning();
 

@@ -104,15 +104,15 @@ export function CliSetupDialog({
       }}
     >
       <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Connect via CLI</DialogTitle>
-          <DialogDescription>
-            Generate a token and run the command to start streaming audio to
-            this session. Tokens stay valid for 1 hour 30 minutes, and the
-            session expiration clock starts only after the CLI sends
-            <span className="mx-1 font-mono text-[11px]">session.start</span>.
-          </DialogDescription>
-        </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Connect via CLI</DialogTitle>
+            <DialogDescription>
+              Generate a token and run the command to start streaming audio to
+              this session. Tokens stay valid for 1 hour 30 minutes, and the
+              billing and session expiration are decided only after the CLI sends
+              <span className="mx-1 font-mono text-[11px]">session.start</span>.
+            </DialogDescription>
+          </DialogHeader>
 
         <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
           <div className="space-y-2">

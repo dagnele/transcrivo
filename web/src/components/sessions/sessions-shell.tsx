@@ -15,6 +15,8 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { authClient } from "@/lib/auth-client";
+import type { EntitlementSummary } from "@/lib/contracts/billing";
 import type { Session, SessionLanguage, SessionType } from "@/lib/contracts/session";
 import {
   getSessionLanguageLabel,
@@ -66,6 +68,7 @@ type SessionsShellProps = {
   children: React.ReactNode;
   sessions: Session[];
   sessionsError: string | null;
+  entitlements: EntitlementSummary | null;
 };
 
 const SIDEBAR_STORAGE_KEY = "transcrivo.sessions-sidebar-collapsed";
@@ -93,10 +96,39 @@ function getActiveSessionId(pathname: string) {
   return decodeURIComponent(match[1]);
 }
 
+function getAvailabilityCopy(summary: EntitlementSummary | null) {
+  if (!summary) {
+    return {
+      label: "Checking availability",
+      detail: "Refresh if this does not update.",
+    };
+  }
+
+  if (summary.availablePurchasedSessions > 0) {
+    return {
+      label: `${summary.availablePurchasedSessions} paid session${summary.availablePurchasedSessions === 1 ? "" : "s"}`,
+      detail: "Used when a draft session starts.",
+    };
+  }
+
+  if (summary.trialAvailable) {
+    return {
+      label: "Free trial available",
+      detail: "Your next started session can use the 5 min trial.",
+    };
+  }
+
+  return {
+    label: "No sessions available",
+    detail: "Buy more to start another session.",
+  };
+}
+
 export function SessionsShell({
   children,
   sessions,
   sessionsError,
+  entitlements: initialEntitlements,
 }: SessionsShellProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -119,6 +151,31 @@ export function SessionsShell({
   const visibleSessions = sessionsQuery.data?.items ?? sessions;
   const visibleSessionsError =
     sessionsError ?? (sessionsQuery.error instanceof Error ? sessionsQuery.error.message : null);
+
+  // Billing entitlements
+  const entitlementsQuery = useQuery(
+    trpc.billing.entitlements.queryOptions(undefined, {
+      initialData: initialEntitlements ?? undefined,
+    }),
+  );
+  const entitlementSummary = entitlementsQuery.data ?? initialEntitlements;
+  const availabilityCopy = getAvailabilityCopy(entitlementSummary);
+
+  const [buyPending, setBuyPending] = useState(false);
+
+  const handleBuySession = useCallback(async () => {
+    setBuyPending(true);
+    try {
+      await authClient.checkout({
+        slug: "session",
+        successUrl: `${window.location.origin}/sessions?checkout=success`,
+      });
+    } catch {
+      // ignore
+    } finally {
+      setBuyPending(false);
+    }
+  }, []);
 
   // Create session dialog
   const [createOpen, setCreateOpen] = useState(false);
@@ -200,9 +257,14 @@ export function SessionsShell({
         setCreateType(DEFAULT_SESSION_TYPE);
         setCreateLanguage(DEFAULT_SESSION_LANGUAGE);
         closeSidebarOnMobile();
-        await queryClient.invalidateQueries({
-          queryKey: trpc.session.pathKey(),
-        });
+        await Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: trpc.session.pathKey(),
+          }),
+          queryClient.invalidateQueries({
+            queryKey: trpc.billing.pathKey(),
+          }),
+        ]);
         router.push(`/sessions/${session.id}`);
         router.refresh();
       },
@@ -461,6 +523,22 @@ export function SessionsShell({
             </div>
           )}
         </ScrollArea>
+
+        <div className="border-t border-border/60 px-3 py-3">
+          <div className="rounded-md border bg-background/70 px-3 py-2">
+            <p className="text-xs font-medium text-foreground">{availabilityCopy.label}</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{availabilityCopy.detail}</p>
+            <Button
+              variant={entitlementSummary?.availablePurchasedSessions ? "outline" : "default"}
+              size="sm"
+              className="mt-3 w-full"
+              onClick={() => void handleBuySession()}
+              disabled={buyPending}
+            >
+              {buyPending ? "Redirecting..." : "Buy more"}
+            </Button>
+          </div>
+        </div>
       </aside>
 
       {/* Main content */}
@@ -487,6 +565,41 @@ export function SessionsShell({
               Give your session a short, descriptive title.
             </DialogDescription>
           </DialogHeader>
+
+          {/* Entitlement status banner */}
+          {entitlementSummary ? (
+            <div className="rounded-md border px-3 py-2 text-xs text-muted-foreground">
+              {entitlementSummary.availablePurchasedSessions > 0 ? (
+                <p>
+                  You have{" "}
+                  <span className="font-medium text-foreground">
+                    {entitlementSummary.availablePurchasedSessions}
+                  </span>{" "}
+                  paid session{entitlementSummary.availablePurchasedSessions !== 1 ? "s" : ""}{" "}
+                  available.
+                </p>
+              ) : entitlementSummary.trialAvailable ? (
+                <p>
+                  You can create a draft now. Billing is decided when the session starts, and you still have a{" "}
+                  <span className="font-medium text-foreground">Free trial (5 min)</span>.
+                </p>
+              ) : (
+                <p>
+                  No sessions available.{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-primary underline-offset-4 hover:underline"
+                    onClick={() => void handleBuySession()}
+                    disabled={buyPending}
+                  >
+                    {buyPending ? "Redirecting..." : "Buy a session"}
+                  </button>{" "}
+                  to continue.
+                </p>
+              )}
+            </div>
+          ) : null}
+
           <form
             onSubmit={(e) => {
               e.preventDefault();

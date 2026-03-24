@@ -13,3 +13,15 @@ export function generateSessionSolutionId() {
 export function generateRecordId() {
   return generatePrefixedId("rec");
 }
+
+export function generateBillingOrderId() {
+  return generatePrefixedId("bord");
+}
+
+export function generateEntitlementId() {
+  return generatePrefixedId("ent");
+}
+
+export function generateBillingProfileId() {
+  return generatePrefixedId("bprf");
+}

@@ -9,6 +9,10 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+import {
+  billingOrderStatusValues,
+  sessionAccessKindValues,
+} from "@/lib/contracts/billing";
 import { sessionEventTypeValues } from "@/lib/contracts/event";
 import {
   sessionSolutionFormatValues,
@@ -34,6 +38,9 @@ export const sessionEventTypes = sessionEventTypeValues;
 export const sessionSolutionStatuses = sessionSolutionStatusValues;
 
 export const sessionSolutionFormats = sessionSolutionFormatValues;
+
+export const billingOrderStatuses = billingOrderStatusValues;
+export const sessionAccessKinds = sessionAccessKindValues;
 
 export const sessions = pgTable(
   "sessions",
@@ -65,6 +72,11 @@ export const sessions = pgTable(
       mode: "date",
     }),
     solutionEnabled: boolean("solution_enabled").notNull().default(false),
+    accessKind: text("access_kind", { enum: sessionAccessKinds }),
+    trialEndsAt: timestamp("trial_ends_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
   },
   (table) => ({
     userCreatedAtIdx: index("sessions_user_created_at_idx").on(
@@ -164,3 +176,80 @@ export type NewSessionEvent = typeof sessionEvents.$inferInsert;
 
 export type SessionSolution = typeof sessionSolutions.$inferSelect;
 export type NewSessionSolution = typeof sessionSolutions.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Billing tables
+// ---------------------------------------------------------------------------
+
+export const billingOrders = pgTable(
+  "billing_orders",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    polarCheckoutId: text("polar_checkout_id").notNull().unique(),
+    polarOrderId: text("polar_order_id").unique(),
+    polarProductId: text("polar_product_id").notNull(),
+    status: text("status", { enum: billingOrderStatuses }).notNull().default("created"),
+    amount: integer("amount").notNull(),
+    currency: text("currency").notNull().default("usd"),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => ({
+    userCreatedAtIdx: index("billing_orders_user_created_at_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    statusIdx: index("billing_orders_status_idx").on(table.status),
+  }),
+);
+
+export const userBillingProfiles = pgTable(
+  "user_billing_profiles",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    polarCustomerId: text("polar_customer_id").unique(),
+    purchasedSessionCredits: integer("purchased_session_credits")
+      .notNull()
+      .default(0),
+    trialUsedAt: timestamp("trial_used_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .defaultNow()
+      .notNull(),
+  },
+);
+
+export type BillingOrder = typeof billingOrders.$inferSelect;
+export type NewBillingOrder = typeof billingOrders.$inferInsert;
+
+export type UserBillingProfile = typeof userBillingProfiles.$inferSelect;
+export type NewUserBillingProfile = typeof userBillingProfiles.$inferInsert;

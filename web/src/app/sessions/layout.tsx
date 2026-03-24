@@ -1,3 +1,4 @@
+import type { EntitlementSummary } from "@/lib/contracts/billing";
 import { SessionsShell } from "@/components/sessions/sessions-shell";
 import { getRequiredSession } from "@/server/auth-session";
 import { getServerTRPCCaller } from "@/server/api/caller";
@@ -15,10 +16,16 @@ export default async function SessionsLayout({
     ReturnType<(Awaited<ReturnType<typeof getServerTRPCCaller>>)["session"]["list"]>
   > | null = null;
   let sessionsError: string | null = null;
+  let entitlements: EntitlementSummary | null = null;
 
   try {
     const caller = await getServerTRPCCaller();
-    sessions = await caller.session.list({ limit: 50 });
+    const [sessionsResult, entitlementsResult] = await Promise.all([
+      caller.session.list({ limit: 50 }),
+      caller.billing.entitlements().catch(() => null),
+    ]);
+    sessions = sessionsResult;
+    entitlements = entitlementsResult;
   } catch (error) {
     sessionsError =
       error instanceof Error
@@ -27,7 +34,11 @@ export default async function SessionsLayout({
   }
 
   return (
-    <SessionsShell sessions={sessions?.items ?? []} sessionsError={sessionsError}>
+    <SessionsShell
+      sessions={sessions?.items ?? []}
+      sessionsError={sessionsError}
+      entitlements={entitlements}
+    >
       {children}
     </SessionsShell>
   );

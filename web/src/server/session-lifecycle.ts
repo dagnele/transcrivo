@@ -1,4 +1,4 @@
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, lte, or } from "drizzle-orm";
 import { generateRecordId } from "@/lib/ids";
 
 import type { SessionStatus } from "@/lib/contracts/session";
@@ -9,6 +9,7 @@ import { getLastPublishedSessionSequence, publishSessionEvent } from "@/server/a
 import { sessionEventSchema } from "@/lib/contracts/event";
 
 export const SESSION_DURATION_MS = 60 * 60 * 1000;
+export const TRIAL_DURATION_MS = 5 * 60 * 1000;
 
 const CLOSED_SESSION_STATUSES = new Set<SessionStatus>(["ended", "failed", "expired"]);
 
@@ -22,8 +23,9 @@ export class SessionStateError extends Error {
   }
 }
 
-export function calculateSessionExpiresAt(startedAt: Date) {
-  return new Date(startedAt.getTime() + SESSION_DURATION_MS);
+export function calculateSessionExpiresAt(startedAt: Date, accessKind?: string | null) {
+  const duration = accessKind === "trial" ? TRIAL_DURATION_MS : SESSION_DURATION_MS;
+  return new Date(startedAt.getTime() + duration);
 }
 
 export function isSessionExpired(
@@ -42,6 +44,16 @@ export async function expireSessionIfNeeded(
   now: Date = new Date(),
 ): Promise<Session> {
   if (!isSessionExpired(session, now)) {
+    // Also check trial-specific expiration via trialEndsAt
+    if (
+      session.accessKind === "trial" &&
+      session.trialEndsAt &&
+      session.trialEndsAt.getTime() <= now.getTime() &&
+      session.status === "live"
+    ) {
+      // Trial time ran out — expire the session
+      return expireTrialSession(session, now);
+    }
     return session;
   }
 
@@ -84,7 +96,50 @@ export async function expireSessionIfNeeded(
       .returning();
 
     publishSessionEvent(sessionEventSchema.parse(persistedEvent));
+
   }
+
+  return updatedSession ?? { ...session, status: "expired", endedAt };
+}
+
+async function expireTrialSession(
+  session: Session,
+  now: Date,
+): Promise<Session> {
+  const endedAt = session.trialEndsAt ?? now;
+
+  const [updatedSession] = await db
+    .update(sessions)
+    .set({
+      status: "expired",
+      endedAt,
+    })
+    .where(eq(sessions.id, session.id))
+    .returning();
+
+  const latestEvent = await db.query.sessionEvents.findFirst({
+    where: eq(sessionEvents.sessionId, session.id),
+    orderBy: desc(sessionEvents.sequence),
+  });
+  const nextSequence = Math.max(
+    latestEvent?.sequence ?? 0,
+    getLastPublishedSessionSequence(session.id),
+  ) + 1;
+  const [persistedEvent] = await db
+    .insert(sessionEvents)
+    .values({
+      id: generateRecordId(),
+      sessionId: session.id,
+      sequence: nextSequence,
+      type: "session.ended",
+      createdAt: endedAt,
+      payload: {
+        reason: "trial-expired",
+      },
+    })
+    .returning();
+
+  publishSessionEvent(sessionEventSchema.parse(persistedEvent));
 
   return updatedSession ?? { ...session, status: "expired", endedAt };
 }
@@ -109,7 +164,13 @@ export async function assertSessionAcceptsCliTraffic(
 export const reconcileExpiredSessions = createExpiredSessionReconciler({
   async listExpiredLiveSessions(now) {
     return db.query.sessions.findMany({
-      where: and(eq(sessions.status, "live"), lte(sessions.expiresAt, now)),
+      where: and(
+        eq(sessions.status, "live"),
+        or(
+          lte(sessions.expiresAt, now),
+          lte(sessions.trialEndsAt, now),
+        ),
+      ),
     });
   },
   expireSession: expireSessionIfNeeded,
