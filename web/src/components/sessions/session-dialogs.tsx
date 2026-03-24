@@ -9,7 +9,6 @@ import {
   sessionTypeOptions,
 } from "@/lib/session-config";
 import { Button } from "@/components/ui/button";
-import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
 import {
   Dialog,
   DialogContent,

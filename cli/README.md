@@ -115,57 +115,55 @@ cargo run -- run \
 
 ## Windows
 
-### Build dependencies
+### Quick start
 
-Install these before building on Windows:
-
-- Rust toolchain with `cargo`
-- LLVM for `clang.dll` / `libclang` used by `bindgen`
-- CMake for bundled `whisper.cpp` sources
-- Visual Studio 2022 Build Tools or Visual Studio 2022 with the C++ toolchain
-- Vulkan SDK if you want to build/run with `whisper-gpu-vulkan`
-
-If you use `winget`, these are the commands we used:
+Open PowerShell and install the build tools:
 
 ```powershell
-winget install --id LLVM.LLVM --accept-package-agreements --accept-source-agreements -e
-winget install --id Kitware.CMake --accept-package-agreements --accept-source-agreements -e
+winget install --id LLVM.LLVM --exact --accept-source-agreements --accept-package-agreements
+winget install --id Kitware.CMake --exact --accept-source-agreements --accept-package-agreements
+winget install --id KhronosGroup.VulkanSDK --exact --accept-source-agreements --accept-package-agreements
 ```
 
-If LLVM is not already on your `PATH`, set:
+You also need Visual Studio 2022 Build Tools or Visual Studio 2022 with the C++ toolchain.
+
+Then start a new PowerShell session and set a short Cargo target directory:
 
 ```powershell
-$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
+$env:CARGO_TARGET_DIR = 'C:\t'
 ```
 
-You may also need these on `PATH` in the current shell:
-
-```powershell
-$env:PATH = "C:\Program Files\LLVM\bin;C:\Program Files\CMake\bin;$env:PATH"
-```
-
-If you want Vulkan support, install the SDK and set `VULKAN_SDK`:
-
-```powershell
-winget install --id KhronosGroup.VulkanSDK --accept-package-agreements --accept-source-agreements -e
-setx VULKAN_SDK "C:\VulkanSDK\1.4.341.1"
-```
-
-Then open a new PowerShell session and verify:
+Verify Vulkan before trying the Vulkan build:
 
 ```powershell
 vulkaninfo
 ```
 
-If `vulkaninfo` reports `Found no drivers!` or cannot create a Vulkan instance, the Windows host or
-VM does not currently expose a usable Vulkan driver and `whisper-gpu-vulkan` will not work.
+If `vulkaninfo` reports `Found no drivers!` or cannot create a Vulkan instance, `whisper-gpu-vulkan`
+will not work on that machine.
 
-In the current VM, the SDK can be installed, but `vulkaninfo` reports `Found no drivers!`, so
-Vulkan inference is not currently usable here.
+### Build the Vulkan CLI
+
+From `cli/`:
+
+```powershell
+cargo build --release --features whisper-gpu-vulkan
+```
+
+The short `CARGO_TARGET_DIR` is recommended on Windows for the Vulkan build because it avoids very
+long nested paths under `target\`.
+
+### Run the Vulkan CLI
+
+From `cli/`:
+
+```powershell
+cargo run --release --features whisper-gpu-vulkan -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
+```
 
 ### Build and checks
 
-From `cli/`:
+For non-Vulkan checks from `cli/`:
 
 ```powershell
 cargo check
@@ -200,8 +198,8 @@ cargo run -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-mod
 
 - Windows capture uses WASAPI for microphone capture and loopback system capture
 - `run` requires a backend URL, token, and usable Whisper model configuration
-- Vulkan Whisper support requires both the Vulkan SDK and a working Vulkan-capable driver inside
-  the Windows environment
+- `whisper-gpu-vulkan` requires both the Vulkan SDK and a working Vulkan-capable driver
+- `CARGO_TARGET_DIR='C:\t'` is a practical default for Windows Vulkan builds
 
 ## Whisper model configuration
 
@@ -278,13 +276,8 @@ cargo run --features whisper-gpu-vulkan -- run \
 Windows PowerShell example:
 
 ```powershell
+$env:CARGO_TARGET_DIR = 'C:\t'
 cargo run --features whisper-gpu-vulkan -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
-```
-
-If `VULKAN_SDK` is not already present in the shell, set it before building or running:
-
-```powershell
-$env:VULKAN_SDK = 'C:\VulkanSDK\1.4.341.1'
 ```
 
 Notes:
