@@ -79,6 +79,10 @@ jobs:
           nvcc_bin="$(command -v nvcc)"
           nvcc_path="$(readlink -f "$nvcc_bin")"
           cuda_root="$(dirname "$(dirname "$nvcc_path")")"
+          if [ ! -d "$cuda_root" ]; then
+            echo "Resolved CUDA root '$cuda_root' from '$nvcc_path' does not exist." >&2
+            exit 1
+          fi
           echo "CUDA_PATH=$cuda_root" >> "$GITHUB_ENV"
           echo "CUDA_HOME=$cuda_root" >> "$GITHUB_ENV"
           echo "CUDAToolkit_ROOT=$cuda_root" >> "$GITHUB_ENV"
@@ -125,7 +129,10 @@ jobs:
         if: matrix.os == 'linux' && matrix.backend == 'cuda'
         run: |
           nvcc --version
-          test -d "$CUDAToolkit_ROOT"
+          if [ ! -d "$CUDAToolkit_ROOT" ]; then
+            echo "CUDAToolkit_ROOT is not set or points to a non-existent toolkit directory." >&2
+            exit 1
+          fi
 
       - name: Verify CUDA toolkit on Windows
         if: matrix.os == 'windows' && matrix.backend == 'cuda'
