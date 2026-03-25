@@ -78,6 +78,10 @@ jobs:
           fi
           nvcc_bin="$(command -v nvcc)"
           nvcc_path="$(readlink -f "$nvcc_bin")"
+          if [ -z "$nvcc_path" ] || [ ! -e "$nvcc_path" ]; then
+            echo "Failed to resolve a valid nvcc path from '$nvcc_bin'." >&2
+            exit 1
+          fi
           cuda_root="$(dirname "$(dirname "$nvcc_path")")"
           if [ ! -d "$cuda_root" ]; then
             echo "Resolved CUDA root '$cuda_root' from '$nvcc_path' does not exist." >&2
@@ -115,7 +119,7 @@ jobs:
           winget install --id Nvidia.CUDA --exact --accept-source-agreements --accept-package-agreements --silent
           $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" | Sort-Object Name -Descending | Select-Object -First 1
           if (-not $cudaRoot) {
-            throw "CUDA toolkit installation did not produce a toolkit directory."
+            throw "CUDA toolkit installation did not produce a toolkit directory in C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA."
           }
           echo "CUDA_PATH=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
           echo "CUDA_HOME=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
