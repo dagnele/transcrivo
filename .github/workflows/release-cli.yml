@@ -76,7 +76,8 @@ jobs:
             echo "CUDA compiler not found after installing nvidia-cuda-toolkit." >&2
             exit 1
           fi
-          cuda_root="$(dirname "$(dirname "$(readlink -f "$(command -v nvcc)")")")"
+          nvcc_path="$(readlink -f "$(command -v nvcc)")"
+          cuda_root="$(dirname "$(dirname "$nvcc_path")")"
           echo "CUDA_PATH=$cuda_root" >> "$GITHUB_ENV"
           echo "CUDA_HOME=$cuda_root" >> "$GITHUB_ENV"
           echo "CUDAToolkit_ROOT=$cuda_root" >> "$GITHUB_ENV"
