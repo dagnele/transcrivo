@@ -72,6 +72,16 @@ jobs:
         if: matrix.os == 'linux' && matrix.backend == 'cuda'
         run: |
           sudo apt-get install -y nvidia-cuda-toolkit
+          if ! command -v nvcc >/dev/null 2>&1; then
+            echo "CUDA compiler not found after installing nvidia-cuda-toolkit." >&2
+            exit 1
+          fi
+          cuda_root="$(dirname "$(dirname "$(readlink -f "$(command -v nvcc)")")")"
+          echo "CUDA_PATH=$cuda_root" >> "$GITHUB_ENV"
+          echo "CUDA_HOME=$cuda_root" >> "$GITHUB_ENV"
+          echo "CUDAToolkit_ROOT=$cuda_root" >> "$GITHUB_ENV"
+          echo "CUDA_TOOLKIT_ROOT_DIR=$cuda_root" >> "$GITHUB_ENV"
+          echo "$cuda_root/bin" >> "$GITHUB_PATH"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -98,9 +108,31 @@ jobs:
         run: |
           winget install --id Nvidia.CUDA --exact --accept-source-agreements --accept-package-agreements --silent
           $cudaRoot = Get-ChildItem "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA" | Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $cudaRoot) {
+            throw "CUDA toolkit installation did not produce a toolkit directory."
+          }
           echo "CUDA_PATH=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
+          echo "CUDA_HOME=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
+          echo "CUDAToolkit_ROOT=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
+          echo "CUDA_TOOLKIT_ROOT_DIR=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
+          echo "CudaToolkitDir=$($cudaRoot.FullName)\" >> $env:GITHUB_ENV
           echo "$($cudaRoot.FullName)\bin" >> $env:GITHUB_PATH
           echo "$($cudaRoot.FullName)\libnvvp" >> $env:GITHUB_PATH
+
+      - name: Verify CUDA toolkit on Linux
+        if: matrix.os == 'linux' && matrix.backend == 'cuda'
+        run: |
+          nvcc --version
+          test -d "$CUDAToolkit_ROOT"
+
+      - name: Verify CUDA toolkit on Windows
+        if: matrix.os == 'windows' && matrix.backend == 'cuda'
+        shell: pwsh
+        run: |
+          nvcc --version
+          if (-not (Test-Path $env:CudaToolkitDir)) {
+            throw "CudaToolkitDir is not set to an existing toolkit directory."
+          }
 
       - name: Verify toolchain on Linux
         if: matrix.os == 'linux'
