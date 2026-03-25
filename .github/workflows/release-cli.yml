@@ -116,7 +116,7 @@ jobs:
           echo "CUDA_HOME=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
           echo "CUDAToolkit_ROOT=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
           echo "CUDA_TOOLKIT_ROOT_DIR=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
-          echo "CudaToolkitDir=$($cudaRoot.FullName)\" >> $env:GITHUB_ENV
+          echo "CudaToolkitDir=$($cudaRoot.FullName)" >> $env:GITHUB_ENV
           echo "$($cudaRoot.FullName)\bin" >> $env:GITHUB_PATH
           echo "$($cudaRoot.FullName)\libnvvp" >> $env:GITHUB_PATH
 
