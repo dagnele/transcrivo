@@ -76,7 +76,8 @@ jobs:
             echo "CUDA compiler not found after installing nvidia-cuda-toolkit." >&2
             exit 1
           fi
-          nvcc_path="$(readlink -f "$(command -v nvcc)")"
+          nvcc_bin="$(command -v nvcc)"
+          nvcc_path="$(readlink -f "$nvcc_bin")"
           cuda_root="$(dirname "$(dirname "$nvcc_path")")"
           echo "CUDA_PATH=$cuda_root" >> "$GITHUB_ENV"
           echo "CUDA_HOME=$cuda_root" >> "$GITHUB_ENV"
@@ -132,7 +133,7 @@ jobs:
         run: |
           nvcc --version
           if (-not (Test-Path $env:CudaToolkitDir)) {
-            throw "CudaToolkitDir is not set to an existing toolkit directory."
+            throw "CudaToolkitDir environment variable is not set or points to a non-existent toolkit directory."
           }
 
       - name: Verify toolchain on Linux
