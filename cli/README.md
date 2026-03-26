@@ -61,6 +61,17 @@ sudo apt-get install -y \
   libspa-0.2-dev
 ```
 
+If you plan to build with `--features whisper-gpu-vulkan`, install the Vulkan development tools too:
+
+```bash
+sudo apt-get install -y \
+  libvulkan-dev \
+  glslc
+```
+
+`whisper-rs-sys` configures `whisper.cpp` through CMake, and CMake's Vulkan detection expects `glslc`
+to be available on `PATH`.
+
 If `libclang` is not already discoverable, set:
 
 ```bash
@@ -112,6 +123,7 @@ cargo run -- run \
 
 - Linux capture uses the native PipeWire-backed capture path
 - `run` requires a backend URL, token, and usable Whisper model configuration
+- `whisper-gpu-vulkan` needs Vulkan headers/libraries plus `glslc` on `PATH`
 
 ## Windows
 
