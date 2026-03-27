@@ -109,13 +109,27 @@ impl BackendWebSocketClient {
         let connection = connect_async(request)
             .await
             .map_err(|error| match error {
-                tungstenite::Error::Http(_) | tungstenite::Error::HttpFormat(_) => {
+                tungstenite::Error::Http(response) => {
+                    let status = response.status();
+                    let body = String::from_utf8_lossy(response.body().as_deref().unwrap_or(b""));
+                    tracing::error!(
+                        status = %status,
+                        body = %body,
+                        "WebSocket handshake rejected by server"
+                    );
+                    WebSocketClientError::HandshakeFailed
+                }
+                tungstenite::Error::HttpFormat(_) => {
+                    tracing::error!("WebSocket handshake HTTP format error");
                     WebSocketClientError::HandshakeFailed
                 }
                 tungstenite::Error::Url(_) | tungstenite::Error::Io(_) => {
                     WebSocketClientError::ConnectFailed(self.backend_url.clone())
                 }
-                _ => WebSocketClientError::HandshakeFailed,
+                _ => {
+                    tracing::error!(error = %error, "WebSocket handshake failed");
+                    WebSocketClientError::HandshakeFailed
+                }
             })?
             .0;
 

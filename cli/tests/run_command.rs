@@ -73,7 +73,7 @@ fn build_session_start_message_includes_selected_device_ids() {
     let selected_devices =
         SelectedDevices::from_source_captures(&captures).expect("selected devices should build");
     let config = build_transcription_config(&RunArgs {
-        backend_url: Some("ws://localhost:8080/ws".to_string()),
+        backend_url: "ws://localhost:8080/ws".to_string(),
         token: Some("token".to_string()),
         mic_device: None,
         system_device: None,
@@ -121,7 +121,7 @@ fn describe_selected_devices_includes_names_and_ids() {
 #[test]
 fn build_transcription_config_preserves_gpu_options() {
     let args = RunArgs {
-        backend_url: Some("ws://localhost:8080/ws".to_string()),
+        backend_url: "ws://localhost:8080/ws".to_string(),
         token: Some("token".to_string()),
         mic_device: None,
         system_device: None,
@@ -142,7 +142,7 @@ fn build_transcription_config_preserves_gpu_options() {
 #[test]
 fn build_transcription_config_defaults_are_source_agnostic() {
     let args = RunArgs {
-        backend_url: Some("ws://localhost:8080/ws".to_string()),
+        backend_url: "ws://localhost:8080/ws".to_string(),
         token: Some("token".to_string()),
         mic_device: None,
         system_device: None,

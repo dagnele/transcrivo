@@ -102,8 +102,12 @@ impl SilenceTracker {
 
 #[derive(Debug, Args)]
 pub struct RunArgs {
-    #[arg(long, help = "Backend WebSocket URL")]
-    pub backend_url: Option<String>,
+    #[arg(
+        long,
+        default_value = "wss://transcrivo.live/ws",
+        help = "Backend WebSocket URL"
+    )]
+    pub backend_url: String,
 
     #[arg(long, help = "Bearer token for backend authentication")]
     pub token: Option<String>,
@@ -154,11 +158,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
     }
     let requested_model = args.whisper_model_name.as_deref().unwrap_or("small.en");
     let _ = ensure_model_downloaded(requested_model).await?;
-    let backend_url = validate_backend_url(
-        args.backend_url
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("backend URL is required"))?,
-    )?;
+    let backend_url = validate_backend_url(&args.backend_url)?;
     let token = validate_required_text(
         "token",
         args.token
