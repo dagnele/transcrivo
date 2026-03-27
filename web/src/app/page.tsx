@@ -137,8 +137,7 @@ export default async function HomePage() {
           <pre className="overflow-x-auto rounded-lg border border-border bg-muted/30 px-5 py-4 font-mono text-xs leading-relaxed text-muted-foreground">
             <span className="text-foreground/50">$</span>{" "}
             <span className="text-foreground">transcrivo run</span> \{"\n"}
-            {"  "}--token &lt;your-token&gt; \{"\n"}
-            {"  "}--backend-url ws://localhost:3000/ws
+            {"  "}--token &lt;your-token&gt;
           </pre>
         </div>
       </section>

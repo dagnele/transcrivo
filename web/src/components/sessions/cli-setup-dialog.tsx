@@ -84,14 +84,10 @@ export function CliSetupDialog({
     tokenMutation.mutate({ sessionId });
   }, [tokenMutation, sessionId]);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_BASE_URL ?? window.location.origin;
-  const backendUrl = appUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:") + "/ws";
-
   const command = token
     ? [
         "transcrivo run",
         `  --token ${token}`,
-        `  --backend-url ${backendUrl}`,
       ].join(" \\\n")
     : null;
 
