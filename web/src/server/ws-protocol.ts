@@ -15,10 +15,13 @@ export const cliOutboundMessageTypeSchema = z.enum([
 export const cliInboundMessageTypeSchema = z.enum(["session.ready", "session.error"]);
 
 const sessionStartPayloadSchema = z.object({
+  cli_version: z.string().min(1),
   platform: z.string().min(1),
   started_at: z.string().datetime(),
   mic_device_id: z.string().min(1).optional(),
   system_device_id: z.string().min(1).optional(),
+  transcription_backend: z.string().min(1),
+  model: z.string().min(1),
 });
 
 const sessionStopPayloadSchema = z.object({
@@ -27,7 +30,7 @@ const sessionStopPayloadSchema = z.object({
 });
 
 const sessionReadyPayloadSchema = z.object({
-  status: z.string().min(1).default("ok"),
+  status: z.literal("ok"),
 });
 
 const sessionErrorPayloadSchema = z.object({
@@ -37,19 +40,12 @@ const sessionErrorPayloadSchema = z.object({
 
 const cliTranscriptPayloadSchema = z.object({
   event_id: z.string().min(1),
-  utterance_id: z.string().min(1).optional(),
+  utterance_id: z.string().min(1),
   source: z.enum(["mic", "system"]),
-  speaker: z.string().min(1),
   text: z.string().min(1),
   start_ms: z.number().int().nonnegative(),
   end_ms: z.number().int().nonnegative(),
   created_at: z.string().datetime(),
-  confidence: z.number().min(0).max(1).optional(),
-  language: z.string().min(1).optional(),
-  device_id: z.string().min(1).optional(),
-  chunk_id: z.string().min(1).optional(),
-  is_overlap: z.boolean().optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const cliMessageEnvelopeSchema = z.object({
@@ -137,22 +133,12 @@ export function toInternalSessionEvent(
     type: sessionEventTypeSchema.parse(envelope.type),
     payload: transcriptEventPayloadSchema.parse({
       eventId: payload.event_id,
-      utteranceId:
-        payload.utterance_id ?? payload.chunk_id ?? `${payload.source}:${payload.start_ms}:${payload.end_ms}`,
+      utteranceId: payload.utterance_id,
       source: payload.source,
-      speaker: payload.speaker,
       text: payload.text,
       startMs: payload.start_ms,
       endMs: payload.end_ms,
       createdAt: payload.created_at,
-      confidence: payload.confidence,
-      language: payload.language,
-      deviceId: payload.device_id,
-      chunkId: payload.chunk_id,
-      meta: {
-        ...(payload.meta ?? {}),
-        isOverlap: payload.is_overlap,
-      },
     }),
   };
 }

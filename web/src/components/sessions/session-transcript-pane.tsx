@@ -263,7 +263,7 @@ export function SessionTranscriptPane({
 
               <div className="space-y-4">
                 {transcriptItems.map((entry) => {
-                  const label = getSpeakerLabel(sessionType, entry.source, entry.speaker);
+                  const label = getSpeakerLabel(sessionType, entry.source);
                   const isYou = entry.source === "mic";
 
                   return (

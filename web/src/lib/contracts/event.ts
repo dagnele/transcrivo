@@ -24,16 +24,10 @@ export const transcriptEventPayloadSchema = z.object({
   utteranceId: z.string().trim().min(1).max(256),
   interviewId: z.string().trim().min(1).max(128).optional(),
   source: z.enum(["mic", "system"]),
-  speaker: z.string().min(1),
   text: z.string().min(1),
   startMs: z.number().int().nonnegative(),
   endMs: z.number().int().nonnegative(),
   createdAt: z.string().datetime().optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  language: z.string().min(1).optional(),
-  deviceId: z.string().min(1).optional(),
-  chunkId: z.string().min(1).optional(),
-  meta: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const sessionEventPayloadSchema = z.record(z.string(), z.unknown());

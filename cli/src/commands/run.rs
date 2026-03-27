@@ -18,7 +18,8 @@ use crate::session::manager::SessionManager;
 use crate::session::models::Source;
 use crate::transcribe::pipeline::TranscriptPipeline;
 use crate::transcribe::whisper_cpp::{
-    RealWhisperBackend, TranscriptionError, WhisperCppAdapter, WhisperCppConfig,
+    transcription_backend_name, RealWhisperBackend, TranscriptionError, WhisperCppAdapter,
+    WhisperCppConfig,
 };
 use crate::transport::protocol::{MessageEnvelope, ProtocolError};
 use crate::transport::{
@@ -168,6 +169,8 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
     info!(
         command = "run",
         backend_url = %backend_url,
+        transcription_backend = transcription_backend_name(),
+        model = requested_model,
         "starting run command"
     );
 
@@ -181,7 +184,8 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
 
     client.connect().await?;
 
-    let start_message = build_session_start_message(&mut session, &selected_devices)?;
+    let start_message =
+        build_session_start_message(&mut session, &selected_devices, &transcription_config)?;
 
     info!(
         mic_device_id = %selected_devices.mic_device_id,
@@ -265,10 +269,13 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
 pub fn build_session_start_message(
     session: &mut SessionManager,
     selected_devices: &SelectedDevices,
+    transcription_config: &TranscriptionConfig,
 ) -> Result<MessageEnvelope, ProtocolError> {
     let start_message = session.create_session_start(
         Some(selected_devices.mic_device_id.clone()),
         Some(selected_devices.system_device_id.clone()),
+        transcription_backend_name().to_string(),
+        transcription_config.model_name().to_string(),
     )?;
     Ok(start_message)
 }
@@ -453,7 +460,14 @@ where
                     break;
                 }
                 _ = &mut backend_tick => {
-                    poll_backend_messages(session, client, selected_devices, shutdown).await?;
+                    poll_backend_messages(
+                        session,
+                        client,
+                        selected_devices,
+                        shutdown,
+                        &transcription_config,
+                    )
+                    .await?;
                     backend_tick.as_mut().reset(Instant::now() + BACKEND_POLL_INTERVAL);
                 }
                 capture_event = capture_rx.recv() => {
@@ -475,7 +489,14 @@ where
                             if shutdown.is_requested() {
                                 break;
                             }
-                            poll_backend_messages(session, client, selected_devices, shutdown).await?;
+                            poll_backend_messages(
+                                session,
+                                client,
+                                selected_devices,
+                                shutdown,
+                                &transcription_config,
+                            )
+                            .await?;
                             if shutdown.is_requested() {
                                 break;
                             }
@@ -490,7 +511,15 @@ where
                         }
                         bail!("live inference worker exited unexpectedly");
                     };
-                    send_inference_result(session, client, selected_devices, shutdown, result).await?;
+                    send_inference_result(
+                        session,
+                        client,
+                        selected_devices,
+                        shutdown,
+                        &transcription_config,
+                        result,
+                    )
+                    .await?;
                 }
             }
         }
@@ -514,7 +543,15 @@ where
     drop(result_tx);
 
     while let Some(result) = result_rx.recv().await {
-        send_inference_result(session, client, selected_devices, shutdown, result).await?;
+        send_inference_result(
+            session,
+            client,
+            selected_devices,
+            shutdown,
+            &transcription_config,
+            result,
+        )
+        .await?;
     }
 
     let stop_result = stop_workers(&mic_worker, &system_worker).await;
@@ -769,10 +806,19 @@ async fn send_inference_result(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
+    transcription_config: &TranscriptionConfig,
     result: InferenceResult,
 ) -> Result<()> {
     for message in result.messages {
-        send_message_with_reconnect(session, client, selected_devices, shutdown, &message).await?;
+        send_message_with_reconnect(
+            session,
+            client,
+            selected_devices,
+            shutdown,
+            &transcription_config,
+            &message,
+        )
+        .await?;
         debug!(
             message_type = ?message.message_type,
             source = ?result.source,
@@ -807,13 +853,21 @@ async fn poll_backend_messages(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
+    transcription_config: &TranscriptionConfig,
 ) -> Result<()> {
     loop {
         let message = match timeout(BACKEND_MESSAGE_POLL_TIMEOUT, client.receive_message()).await {
             Ok(Ok(message)) => message,
             Ok(Err(WebSocketClientError::ConnectionClosed)) => {
                 info!("backend connection closed; attempting reconnect");
-                reconnect_backend_session(session, client, selected_devices, shutdown).await?;
+                reconnect_backend_session(
+                    session,
+                    client,
+                    selected_devices,
+                    shutdown,
+                    transcription_config,
+                )
+                .await?;
                 return Ok(());
             }
             Ok(Err(error)) if shutdown.is_requested() => {
@@ -822,7 +876,14 @@ async fn poll_backend_messages(
             }
             Ok(Err(error)) if is_reconnectable_websocket_error(&error) => {
                 warn!(error = %error, "backend receive failed; attempting reconnect");
-                reconnect_backend_session(session, client, selected_devices, shutdown).await?;
+                reconnect_backend_session(
+                    session,
+                    client,
+                    selected_devices,
+                    shutdown,
+                    transcription_config,
+                )
+                .await?;
                 return Ok(());
             }
             Ok(Err(error)) => return Err(error.into()),
@@ -858,13 +919,21 @@ async fn send_message_with_reconnect(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
+    transcription_config: &TranscriptionConfig,
     message: &MessageEnvelope,
 ) -> Result<()> {
     match client.send_message(message).await {
         Ok(()) => Ok(()),
         Err(error) if is_reconnectable_websocket_error(&error) && !shutdown.is_requested() => {
             warn!(error = %error, "backend send failed; attempting reconnect");
-            reconnect_backend_session(session, client, selected_devices, shutdown).await
+            reconnect_backend_session(
+                session,
+                client,
+                selected_devices,
+                shutdown,
+                transcription_config,
+            )
+            .await
         }
         Err(error) => Err(error.into()),
     }
@@ -875,6 +944,7 @@ async fn reconnect_backend_session(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
+    transcription_config: &TranscriptionConfig,
 ) -> Result<()> {
     let reconnect_deadline = Instant::now() + RECONNECT_WINDOW;
     let mut backoff = RECONNECT_INITIAL_BACKOFF;
@@ -886,7 +956,14 @@ async fn reconnect_backend_session(
 
         let _ = client.close().await;
 
-        match reconnect_backend_session_once(session, client, selected_devices).await {
+        match reconnect_backend_session_once(
+            session,
+            client,
+            selected_devices,
+            transcription_config,
+        )
+        .await
+        {
             Ok(()) => {
                 info!("backend session ready after reconnect");
                 return Ok(());
@@ -916,11 +993,13 @@ async fn reconnect_backend_session_once(
     session: &mut SessionManager,
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
+    transcription_config: &TranscriptionConfig,
 ) -> Result<()> {
     client.connect().await?;
     info!("backend reconnect succeeded; starting fresh session");
 
-    let start_message = build_session_start_message(session, selected_devices)?;
+    let start_message =
+        build_session_start_message(session, selected_devices, transcription_config)?;
     client.send_message(&start_message).await?;
     let ready = client
         .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
@@ -955,6 +1034,12 @@ pub struct TranscriptionConfig {
     pub whisper_use_gpu: bool,
     pub whisper_flash_attn: bool,
     pub whisper_gpu_device: i32,
+}
+
+impl TranscriptionConfig {
+    pub fn model_name(&self) -> &str {
+        self.whisper_model_name.as_deref().unwrap_or("small.en")
+    }
 }
 
 pub fn build_transcription_config(args: &RunArgs) -> TranscriptionConfig {

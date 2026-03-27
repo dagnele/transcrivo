@@ -110,11 +110,7 @@ fn pipeline_emits_final_messages() {
         text: "answer".to_string(),
         start_ms: 0,
         end_ms: 500,
-        confidence: Some(0.9),
-        language: Some("en".to_string()),
-        chunk_id: Some("mic:0:1000:0".to_string()),
         is_partial: false,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, false);
 
@@ -124,9 +120,7 @@ fn pipeline_emits_final_messages() {
 
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message_type, MessageType::TranscriptFinal);
-    assert_eq!(messages[0].payload["speaker"], "Mic");
     assert_eq!(messages[0].payload["source"], "mic");
-    assert_eq!(messages[0].payload["device_id"], "mic-device");
     assert_eq!(messages[0].payload["text"], "answer");
 }
 
@@ -137,11 +131,7 @@ fn pipeline_drops_partials_by_default() {
         text: "draft".to_string(),
         start_ms: 0,
         end_ms: 500,
-        confidence: None,
-        language: Some("en".to_string()),
-        chunk_id: None,
         is_partial: true,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, false);
 
@@ -159,11 +149,7 @@ fn pipeline_can_emit_partials_when_enabled() {
         text: "draft".to_string(),
         start_ms: 1000,
         end_ms: 1500,
-        confidence: None,
-        language: Some("en".to_string()),
-        chunk_id: None,
         is_partial: true,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
@@ -173,7 +159,7 @@ fn pipeline_can_emit_partials_when_enabled() {
 
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message_type, MessageType::TranscriptPartial);
-    assert_eq!(messages[0].payload["speaker"], "System");
+    assert_eq!(messages[0].payload["source"], "system");
 }
 
 #[test]
@@ -183,11 +169,7 @@ fn pipeline_flush_pending_finalizes_last_partial() {
         text: "closing thought".to_string(),
         start_ms: 0,
         end_ms: 500,
-        confidence: None,
-        language: Some("en".to_string()),
-        chunk_id: None,
         is_partial: false,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
@@ -204,8 +186,6 @@ fn pipeline_flush_pending_finalizes_last_partial() {
     assert_eq!(final_messages.len(), 1);
     assert_eq!(final_messages[0].message_type, MessageType::TranscriptFinal);
     assert_eq!(final_messages[0].payload["text"], "closing thought");
-    assert_eq!(partial_messages[0].payload["chunk_id"], "System:0:500");
-    assert_eq!(final_messages[0].payload["chunk_id"], "System:0:500");
     assert_eq!(
         partial_messages[0].payload["utterance_id"],
         final_messages[0].payload["utterance_id"]
@@ -232,11 +212,7 @@ fn pipeline_drops_blank_audio_segments() {
         text: "[BLANK_AUDIO]".to_string(),
         start_ms: 0,
         end_ms: 1000,
-        confidence: Some(0.03),
-        language: Some("en".to_string()),
-        chunk_id: Some("mic:0:1000:0".to_string()),
         is_partial: false,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, true);
 
@@ -249,30 +225,6 @@ fn pipeline_drops_blank_audio_segments() {
 }
 
 #[test]
-fn pipeline_keeps_device_id_when_finalizing_pending_utterance() {
-    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
-    let adapter = build_adapter(vec![vec![TranscriptSegment {
-        text: "closing thought".to_string(),
-        start_ms: 0,
-        end_ms: 500,
-        confidence: None,
-        language: Some("en".to_string()),
-        chunk_id: Some("system:0:1000:0".to_string()),
-        is_partial: false,
-        meta: None,
-    }]]);
-    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
-
-    let partial_messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 1000))
-        .expect("partial should emit");
-    let final_messages = pipeline.flush_pending().expect("flush should work");
-
-    assert_eq!(partial_messages[0].payload["device_id"], "system-device");
-    assert_eq!(final_messages[0].payload["device_id"], "system-device");
-}
-
-#[test]
 fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
@@ -280,11 +232,7 @@ fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
         text: text.to_string(),
         start_ms: 0,
         end_ms: 3000,
-        confidence: Some(0.9),
-        language: Some("en".to_string()),
-        chunk_id: Some("system:0:3000:0".to_string()),
         is_partial: false,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
@@ -314,11 +262,7 @@ fn pipeline_flushes_remainder_after_forced_cutoff() {
         text: format!("{sentence} {continuation}"),
         start_ms: 0,
         end_ms: 3000,
-        confidence: Some(0.9),
-        language: Some("en".to_string()),
-        chunk_id: Some("system:0:3000:0".to_string()),
         is_partial: false,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
@@ -330,74 +274,9 @@ fn pipeline_flushes_remainder_after_forced_cutoff() {
     assert_eq!(messages.len(), 2);
     assert_eq!(messages[0].payload["text"], sentence);
     assert_eq!(messages[1].payload["text"], continuation);
-    let final_start = messages[0].payload["start_ms"]
-        .as_u64()
-        .expect("final start");
-    let final_end = messages[0].payload["end_ms"].as_u64().expect("final end");
-    let partial_start = messages[1].payload["start_ms"]
-        .as_u64()
-        .expect("partial start");
-    let partial_end = messages[1].payload["end_ms"].as_u64().expect("partial end");
-    assert_eq!(
-        messages[0].payload["chunk_id"],
-        format!("System:{final_start}:{final_end}")
-    );
-    assert_eq!(
-        messages[1].payload["chunk_id"],
-        format!("System:{partial_start}:{partial_end}")
-    );
     assert_eq!(flushed.len(), 1);
     assert_eq!(flushed[0].message_type, MessageType::TranscriptFinal);
     assert_eq!(flushed[0].payload["text"], continuation);
-    assert_eq!(
-        flushed[0].payload["chunk_id"],
-        format!("System:{partial_start}:{partial_end}")
-    );
-}
-
-#[test]
-fn pipeline_uses_emitted_timing_for_chunk_id_after_cutoff() {
-    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
-    let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
-    let adapter = build_adapter(vec![vec![TranscriptSegment {
-        text: text.to_string(),
-        start_ms: 0,
-        end_ms: 3000,
-        confidence: Some(0.9),
-        language: Some("en".to_string()),
-        chunk_id: Some("system:0:3000:0".to_string()),
-        is_partial: false,
-        meta: None,
-    }]]);
-    let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
-
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
-        .expect("pipeline should transcribe");
-
-    assert_eq!(messages.len(), 2);
-    let final_start = messages[0].payload["start_ms"]
-        .as_u64()
-        .expect("final start");
-    let final_end = messages[0].payload["end_ms"].as_u64().expect("final end");
-    let partial_start = messages[1].payload["start_ms"]
-        .as_u64()
-        .expect("partial start");
-    let partial_end = messages[1].payload["end_ms"].as_u64().expect("partial end");
-
-    assert_eq!(
-        messages[0].payload["chunk_id"],
-        format!("System:{final_start}:{final_end}")
-    );
-    assert_eq!(
-        messages[1].payload["chunk_id"],
-        format!("System:{partial_start}:{partial_end}")
-    );
-    assert_eq!(final_end, partial_start);
-    assert_ne!(
-        messages[0].payload["utterance_id"],
-        messages[1].payload["utterance_id"]
-    );
 }
 
 #[test]
@@ -408,11 +287,7 @@ fn pipeline_rotates_utterance_id_after_forced_cutoff_flush() {
         text: text.to_string(),
         start_ms: 0,
         end_ms: 3000,
-        confidence: Some(0.9),
-        language: Some("en".to_string()),
-        chunk_id: Some("system:0:3000:0".to_string()),
         is_partial: false,
-        meta: None,
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 

@@ -312,7 +312,7 @@ export const sessionRouter = createTRPCRouter({
         .where(
           and(
             eq(sessionEvents.sessionId, input.sessionId),
-            inArray(sessionEvents.type, ["transcript.partial", "transcript.final"]),
+            eq(sessionEvents.type, "transcript.final"),
             input.cursor !== undefined ? lt(sessionEvents.sequence, input.cursor) : undefined,
           ),
         )

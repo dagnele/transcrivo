@@ -8,7 +8,6 @@ export type TranscriptItem = {
   id: string;
   utteranceId: string;
   sequence: number;
-  speaker: string;
   source: string;
   text: string;
   status: "partial" | "final";
@@ -89,7 +88,6 @@ export function getTranscriptItemFromEvent(event: SessionEvent) {
     id: event.id,
     utteranceId: payload.data.utteranceId,
     sequence: event.sequence,
-    speaker: payload.data.speaker,
     source: payload.data.source,
     text: payload.data.text,
     status: event.type === "transcript.final" ? "final" : "partial",
@@ -123,8 +121,8 @@ function getSystemSpeakerLabel(sessionType: SessionType) {
   return "Interviewer";
 }
 
-export function getSpeakerLabel(sessionType: SessionType, source: string, speaker: string) {
+export function getSpeakerLabel(sessionType: SessionType, source: string) {
   if (source === "mic") return "You";
   if (source === "system") return getSystemSpeakerLabel(sessionType);
-  return speaker;
+  return source;
 }

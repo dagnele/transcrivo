@@ -76,22 +76,18 @@ fn session_manager_builds_start_transcript_and_stop_messages() {
         .create_session_start(
             Some("default-mic".to_string()),
             Some("default-output".to_string()),
+            "whisper-rs".to_string(),
+            "small.en".to_string(),
         )
         .expect("start should build");
     let transcript_message = manager
         .create_transcript_message(
             TranscriptMessageType::Final,
-            None,
+            "utt_test".to_string(),
             Source::System,
             "Can you optimize that approach?".to_string(),
             18_320,
             21_540,
-            Some(0.94),
-            Some("en".to_string()),
-            None,
-            None,
-            None,
-            None,
         )
         .expect("transcript should build");
     let stop_message = manager
@@ -100,15 +96,20 @@ fn session_manager_builds_start_transcript_and_stop_messages() {
 
     assert_eq!(start_message.sequence, 1);
     assert_eq!(start_message.message_type, MessageType::SessionStart);
+    assert_eq!(
+        start_message.payload["cli_version"],
+        env!("CARGO_PKG_VERSION")
+    );
     assert_eq!(start_message.payload["platform"], "linux");
     assert_eq!(start_message.payload["mic_device_id"], "default-mic");
+    assert_eq!(start_message.payload["transcription_backend"], "whisper-rs");
+    assert_eq!(start_message.payload["model"], "small.en");
 
     assert_eq!(transcript_message.sequence, 2);
     assert_eq!(
         transcript_message.message_type,
         MessageType::TranscriptFinal
     );
-    assert_eq!(transcript_message.payload["speaker"], "System");
     assert_eq!(
         transcript_message.payload["created_at"],
         "2026-03-17T14:52:31.118Z"
@@ -117,10 +118,7 @@ fn session_manager_builds_start_transcript_and_stop_messages() {
         .as_str()
         .expect("event id should be a string")
         .starts_with("evt_"));
-    assert!(transcript_message.payload["utterance_id"]
-        .as_str()
-        .expect("utterance id should be a string")
-        .starts_with("utt_"));
+    assert_eq!(transcript_message.payload["utterance_id"], "utt_test");
 
     assert_eq!(stop_message.sequence, 3);
     assert_eq!(stop_message.message_type, MessageType::SessionStop);
@@ -177,17 +175,11 @@ fn empty_transcript_text_is_rejected() {
     let error = manager
         .create_transcript_message(
             TranscriptMessageType::Final,
-            None,
+            "utt_test".to_string(),
             Source::Mic,
             "   ".to_string(),
             0,
             100,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
         )
         .expect_err("empty transcript text should fail");
 

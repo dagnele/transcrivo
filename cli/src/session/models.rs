@@ -10,30 +10,6 @@ pub enum Source {
     System,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Speaker {
-    Mic,
-    System,
-}
-
-impl Speaker {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Mic => "Mic",
-            Self::System => "System",
-        }
-    }
-}
-
-impl Source {
-    pub fn speaker_label(self) -> Speaker {
-        match self {
-            Self::Mic => Speaker::Mic,
-            Self::System => Speaker::System,
-        }
-    }
-}
-
 impl From<crate::audio::capture::CaptureSource> for Source {
     fn from(source: crate::audio::capture::CaptureSource) -> Self {
         match source {
@@ -41,10 +17,6 @@ impl From<crate::audio::capture::CaptureSource> for Source {
             crate::audio::capture::CaptureSource::System => Self::System,
         }
     }
-}
-
-pub fn speaker_for_source(source: Source) -> Speaker {
-    source.speaker_label()
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,6 +48,7 @@ impl TranscriptMessageType {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionContext {
+    pub cli_version: String,
     pub platform: String,
     pub started_at: String,
     pub state: SessionState,
@@ -83,12 +56,15 @@ pub struct SessionContext {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionStartPayload {
+    pub cli_version: String,
     pub platform: String,
     pub started_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mic_device_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_device_id: Option<String>,
+    pub transcription_backend: String,
+    pub model: String,
 }
 
 impl SessionStartPayload {
@@ -121,18 +97,9 @@ pub struct SessionReadyPayload {
     pub status: String,
 }
 
-impl Default for SessionReadyPayload {
-    fn default() -> Self {
-        Self {
-            status: "ok".to_string(),
-        }
-    }
-}
-
 impl SessionReadyPayload {
     pub fn from_map(payload: &Map<String, Value>) -> Result<Self, String> {
         match payload.get("status") {
-            None => Ok(Self::default()),
             Some(Value::String(status)) if !status.is_empty() => Ok(Self {
                 status: status.clone(),
             }),
@@ -177,23 +144,10 @@ pub struct TranscriptEvent {
     #[serde(rename = "type")]
     pub event_type: TranscriptMessageType,
     pub source: Source,
-    pub speaker: Speaker,
     pub text: String,
     pub start_ms: u64,
     pub end_ms: u64,
     pub created_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub confidence: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chunk_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_overlap: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub meta: Option<Map<String, Value>>,
 }
 
 impl TranscriptEvent {
@@ -208,14 +162,6 @@ impl TranscriptEvent {
 
         if self.end_ms < self.start_ms {
             return Err("Transcript end_ms must be greater than or equal to start_ms".to_string());
-        }
-
-        let expected_speaker = speaker_for_source(self.source);
-        if self.speaker != expected_speaker {
-            return Err(format!(
-                "Speaker {:?} does not match source {:?}; expected {:?}",
-                self.speaker, self.source, expected_speaker
-            ));
         }
 
         Ok(())

@@ -235,7 +235,7 @@ describe("session router subscription ownership enforcement", () => {
     },
   ])("rejects $name for another user's session before streaming", async ({ invoke }) => {
     const caller = createCaller();
-    const subscription = (await invoke(caller)) as AsyncIterator<unknown>;
+    const subscription = (await invoke(caller))[Symbol.asyncIterator]();
 
     await expect(subscription.next()).rejects.toMatchObject({ code: "NOT_FOUND" });
 

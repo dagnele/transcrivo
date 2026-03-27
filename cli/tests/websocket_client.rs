@@ -90,9 +90,11 @@ async fn connect_send_and_receive_ready() {
         MessageType::SessionStart,
         1,
         json!({
-            "interview_id": "demo",
+            "cli_version": env!("CARGO_PKG_VERSION"),
             "platform": "linux",
-            "started_at": "2026-03-17T00:00:00.000Z"
+            "started_at": "2026-03-17T00:00:00.000Z",
+            "transcription_backend": "whisper-rs",
+            "model": "small.en"
         })
         .as_object()
         .unwrap()
@@ -175,9 +177,11 @@ async fn backend_error_is_returned_while_waiting_for_ready() {
                 MessageType::SessionStart,
                 1,
                 json!({
-                    "interview_id": "demo",
+                    "cli_version": env!("CARGO_PKG_VERSION"),
                     "platform": "linux",
-                    "started_at": "2026-03-17T00:00:00.000Z"
+                    "started_at": "2026-03-17T00:00:00.000Z",
+                    "transcription_backend": "whisper-rs",
+                    "model": "small.en"
                 })
                 .as_object()
                 .unwrap()
@@ -254,9 +258,11 @@ async fn backend_error_preserves_error_code_while_waiting_for_ready() {
                 MessageType::SessionStart,
                 1,
                 json!({
-                    "interview_id": "demo",
+                    "cli_version": env!("CARGO_PKG_VERSION"),
                     "platform": "linux",
-                    "started_at": "2026-03-17T00:00:00.000Z"
+                    "started_at": "2026-03-17T00:00:00.000Z",
+                    "transcription_backend": "whisper-rs",
+                    "model": "small.en"
                 })
                 .as_object()
                 .unwrap()
@@ -349,9 +355,11 @@ async fn wait_for_ready_ignores_control_frames() {
                 MessageType::SessionStart,
                 1,
                 json!({
-                    "interview_id": "demo",
+                    "cli_version": env!("CARGO_PKG_VERSION"),
                     "platform": "linux",
-                    "started_at": "2026-03-17T00:00:00.000Z"
+                    "started_at": "2026-03-17T00:00:00.000Z",
+                    "transcription_backend": "whisper-rs",
+                    "model": "small.en"
                 })
                 .as_object()
                 .unwrap()
@@ -370,4 +378,82 @@ async fn wait_for_ready_ignores_control_frames() {
     server.await.expect("join server");
 
     assert_eq!(ready.message_type, MessageType::SessionReady);
+}
+
+#[tokio::test]
+async fn wait_for_ready_rejects_non_ok_status() {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind listener");
+    let address = listener.local_addr().expect("local addr");
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.expect("accept connection");
+        let mut websocket = accept_hdr_async(stream, NoCallback)
+            .await
+            .expect("accept websocket");
+
+        if let Some(message) = websocket.next().await {
+            let raw = message
+                .expect("read message")
+                .into_text()
+                .expect("text message");
+            let decoded: serde_json::Value = serde_json::from_str(&raw).expect("decode json");
+
+            if decoded["type"] == "session.start" {
+                websocket
+                    .send(
+                        MessageEnvelope::new(
+                            MessageType::SessionReady,
+                            1,
+                            json!({ "status": "pending" }).as_object().unwrap().clone(),
+                        )
+                        .expect("ready envelope")
+                        .to_json()
+                        .expect("ready json")
+                        .into(),
+                    )
+                    .await
+                    .expect("send ready");
+            }
+        }
+    });
+
+    let mut client = BackendWebSocketClient::new(
+        format!("ws://127.0.0.1:{}/ws", address.port()),
+        "test-token",
+    );
+    client.connect().await.expect("connect client");
+    client
+        .send_message(
+            &MessageEnvelope::new(
+                MessageType::SessionStart,
+                1,
+                json!({
+                    "cli_version": env!("CARGO_PKG_VERSION"),
+                    "platform": "linux",
+                    "started_at": "2026-03-17T00:00:00.000Z",
+                    "transcription_backend": "whisper-rs",
+                    "model": "small.en"
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            )
+            .expect("start envelope"),
+        )
+        .await
+        .expect("send start");
+
+    let ready = client
+        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .await
+        .expect("wait for ready");
+    let error = transcrivo_cli_rs::session::manager::SessionManager::new(Some("linux".to_string()))
+        .handle_inbound_message(&ready)
+        .expect_err("non-ok ready should be rejected");
+    client.close().await.expect("close client");
+    server.await.expect("join server");
+
+    assert_eq!(error, "backend did not accept session as ready: status=pending");
 }

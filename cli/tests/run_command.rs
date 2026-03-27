@@ -72,12 +72,25 @@ fn build_session_start_message_includes_selected_device_ids() {
     );
     let selected_devices =
         SelectedDevices::from_source_captures(&captures).expect("selected devices should build");
+    let config = build_transcription_config(&RunArgs {
+        backend_url: Some("ws://localhost:8080/ws".to_string()),
+        token: Some("token".to_string()),
+        mic_device: None,
+        system_device: None,
+        whisper_model_name: None,
+        whisper_use_gpu: false,
+        whisper_flash_attn: false,
+        whisper_gpu_device: 0,
+    });
 
-    let message = build_session_start_message(&mut session, &selected_devices)
+    let message = build_session_start_message(&mut session, &selected_devices, &config)
         .expect("start message should build");
 
+    assert_eq!(message.payload["cli_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(message.payload["mic_device_id"], "mic-1");
     assert_eq!(message.payload["system_device_id"], "sys-1");
+    assert_eq!(message.payload["transcription_backend"], "whisper-rs");
+    assert_eq!(message.payload["model"], "small.en");
 }
 
 #[test]

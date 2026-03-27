@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use serde_json::Map;
 use tracing::{debug, error};
 
 use crate::audio::preprocess::AudioChunk;
@@ -16,11 +15,6 @@ struct PendingUtterance {
     text: String,
     start_ms: u64,
     end_ms: u64,
-    confidence: Option<f64>,
-    language: Option<String>,
-    device_id: Option<String>,
-    chunk_id: Option<String>,
-    meta: Option<Map<String, serde_json::Value>>,
 }
 
 const MAX_PENDING_UTTERANCE_CHARS: usize = 300;
@@ -64,7 +58,7 @@ impl TranscriptPipeline {
         chunk: &AudioChunk,
     ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let segments = self.run_adapter(chunk)?;
-        self.process_segments(chunk, &segments)
+        self.process_segments(&segments)
     }
 
     /// Async variant that runs the blocking whisper inference off the tokio
@@ -74,7 +68,7 @@ impl TranscriptPipeline {
         chunk: &AudioChunk,
     ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let segments = self.run_adapter_async(chunk).await?;
-        self.process_segments(chunk, &segments)
+        self.process_segments(&segments)
     }
 
     fn run_adapter(
@@ -134,16 +128,12 @@ impl TranscriptPipeline {
             })
     }
 
-    fn process_segments(
-        &mut self,
-        chunk: &AudioChunk,
-        segments: &[TranscriptSegment],
-    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn process_segments(&mut self, segments: &[TranscriptSegment]) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         if !self.emit_partial_events {
-            return self.segments_to_messages(chunk, segments);
+            return self.segments_to_messages(segments);
         }
 
-        self.segments_to_utterance_messages(chunk, segments)
+        self.segments_to_utterance_messages(segments)
     }
 
     pub fn flush_pending(&mut self) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
@@ -157,11 +147,7 @@ impl TranscriptPipeline {
         self.pending_utterance.is_some()
     }
 
-    fn segments_to_messages(
-        &self,
-        chunk: &AudioChunk,
-        segments: &[TranscriptSegment],
-    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn segments_to_messages(&self, segments: &[TranscriptSegment]) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let mut messages = Vec::new();
         for segment in segments {
             if segment.is_partial && !self.emit_partial_events {
@@ -178,17 +164,11 @@ impl TranscriptPipeline {
             };
             let message = self.session.create_transcript_message(
                 event_type,
-                Some(new_utterance_id()),
+                new_utterance_id(),
                 self.source,
                 segment.text.clone(),
                 segment.start_ms,
                 segment.end_ms,
-                segment.confidence,
-                segment.language.clone(),
-                Some(chunk.device_id.clone()),
-                Some(self.emitted_chunk_id(segment.start_ms, segment.end_ms)),
-                None,
-                segment.meta.clone(),
             )?;
             debug!(
                 message_type = ?message.message_type,
@@ -204,11 +184,7 @@ impl TranscriptPipeline {
         Ok(messages)
     }
 
-    fn segments_to_utterance_messages(
-        &mut self,
-        chunk: &AudioChunk,
-        segments: &[TranscriptSegment],
-    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn segments_to_utterance_messages(&mut self, segments: &[TranscriptSegment]) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let meaningful_segments = segments
             .iter()
             .filter(|segment| is_meaningful_transcript_text(&segment.text))
@@ -218,27 +194,13 @@ impl TranscriptPipeline {
             return Ok(Vec::new());
         }
 
-        let combined = combine_segments(chunk, &meaningful_segments);
+        let combined = combine_segments(&meaningful_segments);
         if let Some(pending) = &self.pending_utterance {
             self.pending_utterance = Some(PendingUtterance {
                 utterance_id: pending.utterance_id.clone(),
                 text: merge_text(&pending.text, &combined.text),
                 start_ms: pending.start_ms.min(combined.start_ms),
                 end_ms: pending.end_ms.max(combined.end_ms),
-                confidence: combined.confidence.or(pending.confidence),
-                language: combined
-                    .language
-                    .clone()
-                    .or_else(|| pending.language.clone()),
-                device_id: combined
-                    .device_id
-                    .clone()
-                    .or_else(|| pending.device_id.clone()),
-                chunk_id: combined
-                    .chunk_id
-                    .clone()
-                    .or_else(|| pending.chunk_id.clone()),
-                meta: combined.meta.clone().or_else(|| pending.meta.clone()),
             });
         } else {
             self.pending_utterance = Some(combined);
@@ -260,20 +222,11 @@ impl TranscriptPipeline {
         self.last_partial_text = Some(current.text.clone());
         let message = self.session.create_transcript_message(
             TranscriptMessageType::Partial,
-            Some(current.utterance_id.clone()),
+            current.utterance_id.clone(),
             self.source,
             current.text.clone(),
             current.start_ms,
             current.end_ms,
-            current.confidence,
-            current.language.clone(),
-            current
-                .device_id
-                .clone()
-                .or_else(|| Some(chunk.device_id.clone())),
-            Some(self.emitted_chunk_id(current.start_ms, current.end_ms)),
-            None,
-            current.meta.clone(),
         )?;
         debug!(
             source = ?self.source,
@@ -310,25 +263,12 @@ impl TranscriptPipeline {
     ) -> Result<MessageEnvelope, TranscriptionError> {
         Ok(self.session.create_transcript_message(
             event_type,
-            Some(pending.utterance_id.clone()),
+            pending.utterance_id.clone(),
             self.source,
             pending.text.clone(),
             pending.start_ms,
             pending.end_ms,
-            pending.confidence,
-            pending.language.clone(),
-            pending.device_id.clone(),
-            Some(self.emitted_chunk_id(pending.start_ms, pending.end_ms)),
-            None,
-            pending.meta.clone(),
         )?)
-    }
-
-    fn emitted_chunk_id(&self, start_ms: u64, end_ms: u64) -> String {
-        format!(
-            "{}:{start_ms}:{end_ms}",
-            self.source.speaker_label().as_str()
-        )
     }
 
     fn force_finalize_overlong_pending(
@@ -384,22 +324,12 @@ fn split_pending_utterance(
         text: cut.finalized_text,
         start_ms: pending.start_ms,
         end_ms: split_ms,
-        confidence: pending.confidence,
-        language: pending.language.clone(),
-        device_id: pending.device_id.clone(),
-        chunk_id: pending.chunk_id.clone(),
-        meta: pending.meta.clone(),
     };
     let remainder = cut.remainder_text.map(|text| PendingUtterance {
         utterance_id: new_utterance_id(),
         text,
         start_ms: split_ms,
         end_ms: pending.end_ms,
-        confidence: pending.confidence,
-        language: pending.language,
-        device_id: pending.device_id,
-        chunk_id: pending.chunk_id,
-        meta: pending.meta,
     });
 
     (finalized, remainder)
@@ -425,7 +355,7 @@ fn interpolate_split_ms(
     split_ms.min(end_ms)
 }
 
-fn combine_segments(chunk: &AudioChunk, segments: &[TranscriptSegment]) -> PendingUtterance {
+fn combine_segments(segments: &[TranscriptSegment]) -> PendingUtterance {
     let first = &segments[0];
     let last = &segments[segments.len() - 1];
     let text = segments
@@ -434,26 +364,11 @@ fn combine_segments(chunk: &AudioChunk, segments: &[TranscriptSegment]) -> Pendi
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
-    let confidences = segments
-        .iter()
-        .filter_map(|segment| segment.confidence)
-        .collect::<Vec<_>>();
-    let confidence = if confidences.is_empty() {
-        None
-    } else {
-        Some(confidences.iter().sum::<f64>() / confidences.len() as f64)
-    };
-
     PendingUtterance {
         utterance_id: new_utterance_id(),
         text,
         start_ms: first.start_ms,
         end_ms: last.end_ms,
-        confidence,
-        language: last.language.clone().or_else(|| first.language.clone()),
-        device_id: Some(chunk.device_id.clone()),
-        chunk_id: last.chunk_id.clone().or_else(|| first.chunk_id.clone()),
-        meta: last.meta.clone().or_else(|| first.meta.clone()),
     }
 }
 

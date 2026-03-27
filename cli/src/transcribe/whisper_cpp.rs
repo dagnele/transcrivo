@@ -2,11 +2,8 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use serde_json::{Map, Value};
 use thiserror::Error;
-use whisper_rs::{
-    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
-};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 use crate::audio::preprocess::AudioChunk;
 use crate::util::paths::default_models_dir;
@@ -44,11 +41,7 @@ pub struct TranscriptSegment {
     pub text: String,
     pub start_ms: u64,
     pub end_ms: u64,
-    pub confidence: Option<f64>,
-    pub language: Option<String>,
-    pub chunk_id: Option<String>,
     pub is_partial: bool,
-    pub meta: Option<Map<String, Value>>,
 }
 
 impl TranscriptSegment {
@@ -99,6 +92,8 @@ pub trait WhisperBackend: Send + Sync {
     ) -> Result<Vec<TranscriptSegment>, TranscriptionError>;
 }
 
+pub const TRANSCRIPTION_BACKEND_WHISPER_RS: &str = "whisper-rs";
+
 #[derive(Debug, Default)]
 pub struct DebugWhisperBackend;
 
@@ -106,7 +101,7 @@ impl WhisperBackend for DebugWhisperBackend {
     fn transcribe(
         &self,
         chunk: &AudioChunk,
-        config: &WhisperCppConfig,
+        _config: &WhisperCppConfig,
     ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
         if chunk.samples.is_empty() {
             return Ok(Vec::new());
@@ -116,18 +111,12 @@ impl WhisperBackend for DebugWhisperBackend {
             crate::audio::capture::CaptureSource::Mic => "mic",
             crate::audio::capture::CaptureSource::System => "system",
         };
-        let mut meta = Map::new();
-        meta.insert("backend".to_string(), Value::String("debug".to_string()));
 
         Ok(vec![TranscriptSegment {
             text: format!("debug {source} audio"),
             start_ms: chunk.start_ms,
             end_ms: chunk.end_ms,
-            confidence: Some(1.0),
-            language: config.language.clone().or_else(|| Some("en".to_string())),
-            chunk_id: Some(format!("{source}:{}:{}", chunk.start_ms, chunk.end_ms)),
             is_partial: false,
-            meta: Some(meta),
         }])
     }
 }
@@ -147,7 +136,6 @@ impl WhisperBackend for UnconfiguredBackend {
 
 #[derive(Debug)]
 pub struct RealWhisperBackend {
-    model_path: PathBuf,
     state: Mutex<RealWhisperState>,
     shutdown: Option<ShutdownController>,
 }
@@ -155,7 +143,7 @@ pub struct RealWhisperBackend {
 #[derive(Debug)]
 struct RealWhisperState {
     context: WhisperContext,
-    state: WhisperState,
+    state: whisper_rs::WhisperState,
 }
 
 impl RealWhisperBackend {
@@ -183,7 +171,6 @@ impl RealWhisperBackend {
             .map_err(|error| TranscriptionError::StateCreation(error.to_string()))?;
 
         Ok(Self {
-            model_path,
             state: Mutex::new(RealWhisperState { context, state }),
             shutdown: None,
         })
@@ -250,7 +237,6 @@ impl WhisperBackend for RealWhisperBackend {
                 _ => TranscriptionError::Inference(error.to_string()),
             })?;
 
-        let detected_language = detected_language(&guard.state, &guard.context, config);
         let mut results = Vec::new();
         for segment in guard.state.as_iter() {
             let text = segment
@@ -261,24 +247,6 @@ impl WhisperBackend for RealWhisperBackend {
             if text.is_empty() {
                 continue;
             }
-
-            let mut meta = Map::new();
-            meta.insert(
-                "backend".to_string(),
-                Value::String("whisper-rs".to_string()),
-            );
-            meta.insert(
-                "model_path".to_string(),
-                Value::String(self.model_path.display().to_string()),
-            );
-            meta.insert(
-                "segment_index".to_string(),
-                Value::from(segment.segment_index()),
-            );
-            meta.insert(
-                "no_speech_probability".to_string(),
-                Value::from(segment.no_speech_probability() as f64),
-            );
 
             let start_ms = chunk
                 .start_ms
@@ -293,17 +261,7 @@ impl WhisperBackend for RealWhisperBackend {
                 text,
                 start_ms,
                 end_ms: end_ms.max(start_ms),
-                confidence: confidence_from_segment(&segment),
-                language: detected_language.clone(),
-                chunk_id: Some(format!(
-                    "{:?}:{}:{}:{}",
-                    chunk.source,
-                    chunk.start_ms,
-                    chunk.end_ms,
-                    segment.segment_index()
-                )),
                 is_partial: false,
-                meta: Some(meta),
             });
         }
 
@@ -488,26 +446,8 @@ fn normalized_language(config: &WhisperCppConfig, context: &WhisperContext) -> O
     }
 }
 
-fn detected_language(
-    state: &WhisperState,
-    context: &WhisperContext,
-    config: &WhisperCppConfig,
-) -> Option<String> {
-    if let Some(language) = normalized_language(config, context) {
-        return Some(language);
-    }
-
-    let language_id = state.full_lang_id_from_state();
-    if language_id < 0 {
-        return None;
-    }
-
-    whisper_rs::get_lang_str(language_id).map(|value| value.to_string())
-}
-
-fn confidence_from_segment(segment: &whisper_rs::WhisperSegment<'_>) -> Option<f64> {
-    let no_speech = segment.no_speech_probability().clamp(0.0, 1.0) as f64;
-    Some(1.0 - no_speech)
+pub fn transcription_backend_name() -> &'static str {
+    TRANSCRIPTION_BACKEND_WHISPER_RS
 }
 
 fn default_thread_count() -> i32 {

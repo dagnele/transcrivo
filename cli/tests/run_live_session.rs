@@ -105,7 +105,12 @@ async fn run_live_session_returns_error_when_one_source_ends_unexpectedly() {
 
     let mut session = SessionManager::new(Some("linux".to_string()));
     let start_message = session
-        .create_session_start(Some("mic-1".to_string()), Some("sys-1".to_string()))
+        .create_session_start(
+            Some("mic-1".to_string()),
+            Some("sys-1".to_string()),
+            "whisper-rs".to_string(),
+            "small.en".to_string(),
+        )
         .expect("start message");
     client
         .send_message(&start_message)
@@ -228,7 +233,12 @@ async fn run_live_session_stops_when_backend_expires_session() {
 
     let mut session = SessionManager::new(Some("linux".to_string()));
     let start_message = session
-        .create_session_start(Some("mic-1".to_string()), Some("sys-1".to_string()))
+        .create_session_start(
+            Some("mic-1".to_string()),
+            Some("sys-1".to_string()),
+            "whisper-rs".to_string(),
+            "small.en".to_string(),
+        )
         .expect("start message");
     client
         .send_message(&start_message)
@@ -378,7 +388,12 @@ async fn run_live_session_reconnects_after_backend_restart() {
 
     let mut session = SessionManager::new(Some("linux".to_string()));
     let start_message = session
-        .create_session_start(Some("mic-1".to_string()), Some("sys-1".to_string()))
+        .create_session_start(
+            Some("mic-1".to_string()),
+            Some("sys-1".to_string()),
+            "whisper-rs".to_string(),
+            "small.en".to_string(),
+        )
         .expect("start message");
     client
         .send_message(&start_message)

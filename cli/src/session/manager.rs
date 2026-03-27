@@ -1,15 +1,12 @@
 use std::env;
 
-use serde_json::{Map, Value};
-
 use crate::session::models::{
-    speaker_for_source, SessionContext, SessionErrorPayload, SessionReadyPayload,
-    SessionStartPayload, SessionState, SessionStopPayload, Source, TranscriptEvent,
-    TranscriptMessageType,
+    SessionContext, SessionErrorPayload, SessionReadyPayload, SessionStartPayload, SessionState,
+    SessionStopPayload, Source, TranscriptEvent, TranscriptMessageType,
 };
 use crate::session::sequence::Sequence;
 use crate::transport::protocol::{MessageEnvelope, MessageType, ProtocolError};
-use crate::util::ids::{new_event_id, new_utterance_id};
+use crate::util::ids::new_event_id;
 use crate::util::time::SessionClock;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +40,7 @@ impl SessionManager {
     ) -> Self {
         let platform = platform_name.unwrap_or_else(default_platform_name);
         let context = SessionContext {
+            cli_version: env!("CARGO_PKG_VERSION").to_string(),
             platform,
             started_at: clock.started_at(),
             state: SessionState::Initialized,
@@ -59,12 +57,17 @@ impl SessionManager {
         &mut self,
         mic_device_id: Option<String>,
         system_device_id: Option<String>,
+        transcription_backend: String,
+        model: String,
     ) -> Result<MessageEnvelope, ProtocolError> {
         let payload = SessionStartPayload {
+            cli_version: self.context.cli_version.clone(),
             platform: self.context.platform.clone(),
             started_at: self.context.started_at.clone(),
             mic_device_id,
             system_device_id,
+            transcription_backend,
+            model,
         };
 
         self.context.state = SessionState::Started;
@@ -75,40 +78,26 @@ impl SessionManager {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn create_transcript_message(
         &self,
         event_type: TranscriptMessageType,
-        utterance_id: Option<String>,
+        utterance_id: String,
         source: Source,
         text: String,
         start_ms: u64,
         end_ms: u64,
-        confidence: Option<f64>,
-        language: Option<String>,
-        device_id: Option<String>,
-        chunk_id: Option<String>,
-        is_overlap: Option<bool>,
-        meta: Option<Map<String, Value>>,
     ) -> Result<MessageEnvelope, ProtocolError> {
         let sequence = self.sequence.next();
         let event = TranscriptEvent {
             event_id: new_event_id(),
-            utterance_id: utterance_id.unwrap_or_else(new_utterance_id),
+            utterance_id,
             sequence,
             event_type,
             source,
-            speaker: speaker_for_source(source),
             text,
             start_ms,
             end_ms,
             created_at: self.clock.created_at(),
-            confidence,
-            language,
-            device_id,
-            chunk_id,
-            is_overlap,
-            meta,
         };
 
         event
@@ -145,6 +134,12 @@ impl SessionManager {
         match message.message_type {
             MessageType::SessionReady => {
                 let payload = SessionReadyPayload::from_map(&message.payload)?;
+                if payload.status != "ok" {
+                    return Err(format!(
+                        "backend did not accept session as ready: status={}",
+                        payload.status
+                    ));
+                }
                 self.context.state = SessionState::Ready;
                 Ok(InboundMessageResult {
                     state: self.context.state,
