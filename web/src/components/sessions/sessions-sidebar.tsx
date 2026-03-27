@@ -184,7 +184,7 @@ export function SessionsSidebar({
                     >
                       <Hash className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
                           <p className="min-w-0 flex-1 truncate text-sm">
                             {session.title}
                           </p>
