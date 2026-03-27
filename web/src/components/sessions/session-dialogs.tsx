@@ -195,12 +195,13 @@ export function CreateSessionDialog({
         language: normalizeSessionLanguage(type, language),
       });
       reset();
+      onOpenChange(false);
     } catch {
       // ignore
     } finally {
       setPending(false);
     }
-  }, [language, onCreate, reset, title, type]);
+  }, [language, onCreate, onOpenChange, reset, title, type]);
 
   return (
     <Dialog
