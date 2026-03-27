@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   ArrowRight,
   Check,
   Mic,
-  Monitor,
   Terminal,
   Timer,
   Zap,
@@ -80,8 +80,7 @@ export default async function HomePage() {
           </Button>
         </div>
 
-        {/* Screenshot placeholder */}
-        <div className="mt-14 w-full overflow-hidden rounded-xl border border-border bg-card ring-1 ring-foreground/[0.06]">
+        <div className="mt-14 w-full overflow-hidden rounded-xl border border-border ring-1 ring-foreground/[0.06]">
           <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
             <span className="size-2.5 rounded-full bg-muted-foreground/20" />
             <span className="size-2.5 rounded-full bg-muted-foreground/20" />
@@ -90,12 +89,14 @@ export default async function HomePage() {
               transcrivo &mdash; live session
             </span>
           </div>
-          <div className="flex aspect-[16/9] items-center justify-center bg-muted/30 text-xs text-muted-foreground/40">
-            <div className="flex flex-col items-center gap-2">
-              <Monitor className="size-8 opacity-40" />
-              <span>Screenshot placeholder</span>
-            </div>
-          </div>
+          <Image
+            src="/images/screenshot-session.png"
+            alt="Transcrivo live session"
+            width={1920}
+            height={1080}
+            className="w-full"
+            priority
+          />
         </div>
       </section>
 
