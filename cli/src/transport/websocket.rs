@@ -25,6 +25,8 @@ pub enum WebSocketClientError {
     ConnectFailed(String),
     #[error("Backend WebSocket handshake failed")]
     HandshakeFailed,
+    #[error("Backend server unavailable (status {0})")]
+    ServerUnavailable(u16),
     #[error("WebSocket client is not connected")]
     NotConnected,
     #[error("Failed to send message to backend")]
@@ -117,7 +119,11 @@ impl BackendWebSocketClient {
                         body = %body,
                         "WebSocket handshake rejected by server"
                     );
-                    WebSocketClientError::HandshakeFailed
+                    if status.is_server_error() {
+                        WebSocketClientError::ServerUnavailable(status.as_u16())
+                    } else {
+                        WebSocketClientError::HandshakeFailed
+                    }
                 }
                 tungstenite::Error::HttpFormat(_) => {
                     tracing::error!("WebSocket handshake HTTP format error");

@@ -1019,6 +1019,7 @@ fn is_reconnectable_websocket_error(error: &WebSocketClientError) -> bool {
             | WebSocketClientError::SendFailed
             | WebSocketClientError::ReceiveFailed
             | WebSocketClientError::ConnectionClosed
+            | WebSocketClientError::ServerUnavailable(_)
     )
 }
 
