@@ -324,12 +324,13 @@ export function RenameSessionDialog({
         type,
         language: normalizeSessionLanguage(type, language),
       });
+      onClose();
     } catch {
       // ignore
     } finally {
       setPending(false);
     }
-  }, [language, onRename, session, title, type]);
+  }, [language, onClose, onRename, session, title, type]);
 
   return (
     <Dialog open={session !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -384,12 +385,13 @@ export function DeleteSessionDialog({
     setPending(true);
     try {
       await onDelete(session.id);
+      onClose();
     } catch {
       // ignore
     } finally {
       setPending(false);
     }
-  }, [onDelete, session]);
+  }, [onDelete, onClose, session]);
 
   return (
     <AlertDialog open={session !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
