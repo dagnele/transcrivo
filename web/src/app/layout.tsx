@@ -51,9 +51,9 @@ export const metadata: Metadata = {
     follow: true,
   },
   icons: {
-    icon: "/transcrivo.svg",
-    shortcut: "/transcrivo.svg",
-    apple: "/transcrivo.svg",
+    icon: "/transcrivo.ico",
+    shortcut: "/transcrivo.ico",
+    apple: "/transcrivo.ico",
   },
 };
 
