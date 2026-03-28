@@ -25,22 +25,32 @@ import { SiteHeader } from "@/components/site-header";
 import { getOptionalSession } from "@/server/auth-session";
 
 export const metadata: Metadata = {
-  title: "Local Whisper Transcription With Live AI Assistance",
+  title: "Your audio stays local. AI insights in your browser.",
   description:
-    "Run local Whisper transcription during interviews and meetings, stream transcripts live, and get transcript-grounded AI assistance in your browser.",
+    "Whisper runs on your machine — your audio never leaves your device. Transcripts are analyzed by AI in the cloud and streamed to your browser in real time.",
+  keywords: [
+    "whisper transcription",
+    "local transcription",
+    "real-time transcription",
+    "AI transcription",
+    "speech to text",
+    "live transcription",
+    "privacy transcription",
+    "leetcode",
+  ],
   alternates: {
     canonical: "/",
   },
   openGraph: {
     title: "Transcrivo",
     description:
-      "Run local Whisper transcription during interviews and meetings, stream transcripts live, and get transcript-grounded AI assistance in your browser.",
+      "Whisper runs on your machine — your audio never leaves your device. Transcripts are analyzed by AI in the cloud and streamed to your browser in real time.",
     url: "/",
   },
   twitter: {
     title: "Transcrivo",
     description:
-      "Run local Whisper transcription during interviews and meetings, stream transcripts live, and get transcript-grounded AI assistance in your browser.",
+      "Whisper runs on your machine — your audio never leaves your device. Transcripts are analyzed by AI in the cloud and streamed to your browser in real time.",
   },
 };
 
@@ -59,14 +69,15 @@ export default async function HomePage() {
       {/* Hero */}
       <section className="mx-auto flex w-full max-w-5xl flex-col items-center px-6 pt-20 pb-16 text-center sm:pt-28 sm:pb-20">
         <Badge variant="secondary" className="mb-6">
-          Local Whisper &middot; Real-time AI
+          Local Whisper &middot; Cloud AI
         </Badge>
         <h1 className="max-w-3xl text-3xl font-semibold leading-tight tracking-tight sm:text-4xl md:text-5xl">
-          Live transcription with AI&#8209;powered&nbsp;solutions
+          Your audio stays local. AI insights in your&nbsp;browser.
         </h1>
         <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          Capture audio locally, transcribe in real time with Whisper, and get
-          AI&#8209;generated solutions streamed to a split&#8209;pane workspace.
+          Whisper runs on your machine — your audio never leaves your device.
+          Transcripts are analyzed by AI in the cloud and streamed to your
+          browser in real time.
         </p>
         <div className="mt-8 flex items-center gap-3">
           <Button size="lg" asChild>
@@ -121,24 +132,15 @@ export default async function HomePage() {
           <StepCard
             step="2"
             icon={<Terminal className="size-4" />}
-            title="Connect the CLI"
-            description="Generate a token, run the Rust CLI locally. It captures mic and system audio, transcribes with Whisper on your machine."
+            title="Run in background"
+            description="Start the CLI on your machine. It runs silently in the background, transcribing with Whisper — your audio never leaves your device."
           />
           <StepCard
             step="3"
             icon={<Mic className="size-4" />}
-            title="Live transcripts + AI"
-            description="Watch real-time transcripts stream in. The AI analyzes the conversation and generates solutions in a split-pane view."
+            title="See results in browser"
+            description="Open the session on any device to see transcripts and AI solutions stream live, from anywhere."
           />
-        </div>
-
-        {/* CLI snippet */}
-        <div className="mx-auto mt-12 max-w-xl">
-          <pre className="overflow-x-auto rounded-lg border border-border bg-muted/30 px-5 py-4 font-mono text-xs leading-relaxed text-muted-foreground">
-            <span className="text-foreground/50">$</span>{" "}
-            <span className="text-foreground">transcrivo run</span> \{"\n"}
-            {"  "}--token &lt;your-token&gt;
-          </pre>
         </div>
       </section>
 
