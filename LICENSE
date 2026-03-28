@@ -24,9 +24,9 @@ Additional Use Grant: You may make Production Use of the Licensed Work for your
                       whose primary value is access to or operation of the
                       Licensed Work for third parties.
 
-Change Date:          2030-03-24
+Change Date:          2031-03-29
 
-Change License:       Apache License, Version 2.0
+Change License:       Server Side Public License (SSPL) Version 1.0, or any later version
 
 Terms
 
@@ -75,11 +75,9 @@ In consideration of the right to use this License's text and the "Business
 Source License" name and trademark, Licensor covenants to MariaDB, and to all
 other recipients of the licensed work to be provided by Licensor:
 
-To specify as the Change License the GPL Version 2.0 or any later version, or a
-license that is compatible with GPL Version 2.0 or a later version, where
-"compatible" means that software provided under the Change License can be
-included in a program with software provided under GPL Version 2.0 or a later
-version. Licensor may specify additional Change Licenses without limitation.
+To specify as the Change License the Server Side Public License (SSPL) Version 1.0
+                      or any later version, or a license that is compatible with SSPL Version 1.0 or a
+                      later version. Licensor may specify additional Change Licenses without limitation.
 
 To either: (a) specify an additional grant of rights to use that does not
 impose any additional restriction on the right granted in this License, as the
