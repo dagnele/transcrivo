@@ -142,11 +142,14 @@ export function SessionsShell({
   const visibleSessionsError =
     sessionsError ?? (sessionsQuery.error instanceof Error ? sessionsQuery.error.message : null);
 
+  const sessionsLoading = sessionsQuery.isLoading;
+
   useEffect(() => {
+    if (sessionsLoading) return;
     if (isIndex && visibleSessions.length > 0 && !activeSessionIdFromUrl) {
       router.push(`/sessions/${visibleSessions[0].id}`);
     }
-  }, [isIndex, visibleSessions, activeSessionIdFromUrl, router]);
+  }, [sessionsLoading, isIndex, visibleSessions, activeSessionIdFromUrl, router]);
 
   const entitlementsQuery = useQuery(
     trpc.billing.entitlements.queryOptions(undefined, {
@@ -190,11 +193,10 @@ export function SessionsShell({
   const handleCreate = useCallback(
     async (input: { title: string; type: SessionType; language: SessionLanguage | null }) => {
       const session = await createMutation.mutateAsync(input);
-      closeSidebar();
       await invalidateAll();
       router.push(`/sessions/${session.id}`);
     },
-    [closeSidebar, createMutation, invalidateAll, router],
+    [createMutation, invalidateAll, router],
   );
 
   const handleRename = useCallback(
@@ -213,10 +215,10 @@ export function SessionsShell({
   const handleDelete = useCallback(
     async (sessionId: string) => {
       await deleteMutation.mutateAsync({ sessionId });
+      await invalidateAll();
       if (sessionId === activeSessionId) {
         router.push("/sessions");
       }
-      await invalidateAll();
     },
     [activeSessionId, deleteMutation, invalidateAll, router],
   );
