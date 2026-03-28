@@ -230,8 +230,16 @@ export default async function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto border-t border-border px-6 py-6 text-center text-xs text-muted-foreground">
-        &copy; {new Date().getFullYear()} Transcrivo. All rights reserved.
+      <footer className="mt-auto flex flex-col items-center gap-3 border-t border-border px-6 py-6 text-center text-xs text-muted-foreground">
+        <a
+          href="https://github.com/dagnele/transcrivo"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-foreground"
+        >
+          GitHub
+        </a>
+        <span>&copy; {new Date().getFullYear()} Transcrivo. All rights reserved.</span>
       </footer>
     </div>
   );
