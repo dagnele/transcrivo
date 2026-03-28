@@ -21,7 +21,7 @@ type Backend = "cpu" | "vulkan" | "cuda";
 const SOURCE_README_URL =
   "https://github.com/dagnele/transcrivo/blob/main/cli/README.md";
 const RELEASES_URL = "https://github.com/dagnele/transcrivo/releases";
-const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/dagnele/transcrivo/main/cli";
+const GITHUB_RAW_BASE = "https://transcrivo.live";
 
 const PLATFORM_OPTIONS: Array<{ value: Platform; label: string }> = [
   { value: "linux", label: "Linux" },
