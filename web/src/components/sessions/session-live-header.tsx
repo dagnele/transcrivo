@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PanelLeft, Terminal } from "lucide-react";
+import { Download, PanelLeft, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
@@ -9,6 +9,9 @@ import { getSessionLanguageLabel, getSessionTypeLabel } from "@/lib/session-conf
 import { cn } from "@/lib/utils";
 
 import { SessionStatusBadge } from "./session-status-badge";
+import type { TranscriptItem } from "./session-transcript";
+import type { SessionSolution } from "@/lib/contracts/solution";
+import { downloadSessionMarkdown } from "@/lib/session-ui";
 
 type SessionLiveHeaderProps = {
   session: Session;
@@ -20,6 +23,8 @@ type SessionLiveHeaderProps = {
   showSidebarToggle: boolean;
   onToggleSidebar: () => void;
   onOpenCli: () => void;
+  transcriptItems?: TranscriptItem[];
+  solution?: SessionSolution | null;
 };
 
 function formatTrialRemaining(ms: number): string {
@@ -73,9 +78,15 @@ export function SessionLiveHeader({
   showSidebarToggle,
   onToggleSidebar,
   onOpenCli,
+  transcriptItems = [],
+  solution = null,
 }: SessionLiveHeaderProps) {
   const isTrial = accessKind === "trial";
   const showTrialCountdown = isTrial && trialEndsAt && status !== "draft";
+
+  const handleExport = () => {
+    downloadSessionMarkdown(session, transcriptItems, solution);
+  };
 
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-border/60 px-6 py-2.5">
@@ -111,6 +122,15 @@ export function SessionLiveHeader({
         ) : null}
       </div>
       <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+          onClick={handleExport}
+        >
+          <Download className="h-3 w-3" />
+          Export
+        </Button>
         <Button
           variant="ghost"
           size="sm"

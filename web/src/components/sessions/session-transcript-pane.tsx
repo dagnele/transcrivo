@@ -33,6 +33,7 @@ type SessionTranscriptPaneProps = {
   initialLastSequence: number;
   onLatestFinalSequenceChange: (sequence: number) => void;
   onEvent: (event: SessionEvent) => void;
+  onTranscriptChange?: (items: TranscriptItem[]) => void;
 };
 
 function getRemainingScrollDistance(viewport: HTMLDivElement) {
@@ -45,6 +46,7 @@ export function SessionTranscriptPane({
   initialLastSequence,
   onLatestFinalSequenceChange,
   onEvent,
+  onTranscriptChange,
 }: SessionTranscriptPaneProps) {
   const trpc = useTRPC();
   const trpcClient = useTRPCClient();
@@ -82,6 +84,10 @@ export function SessionTranscriptPane({
   const transcriptItems = useMemo(() => {
     return liveItems.reduce<TranscriptItem[]>(mergeTranscriptItem, pagedTranscriptItems);
   }, [liveItems, pagedTranscriptItems]);
+
+  useEffect(() => {
+    onTranscriptChange?.(transcriptItems);
+  }, [transcriptItems, onTranscriptChange]);
 
   const latestFinalSequence = useMemo(() => {
     return transcriptItems.reduce(

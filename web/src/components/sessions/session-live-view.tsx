@@ -8,6 +8,7 @@ import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
 import { SessionLiveHeader } from "@/components/sessions/session-live-header";
 import { useSessionsSidebar } from "@/components/sessions/sessions-shell";
 import { SessionTranscriptPane } from "@/components/sessions/session-transcript-pane";
+import type { TranscriptItem } from "@/components/sessions/session-transcript";
 import { SolutionPane } from "@/components/sessions/session-solution-pane";
 import {
   ResizableHandle,
@@ -304,6 +305,8 @@ export function SessionLiveView({
     solutionState.solution !== null &&
     transcriptLatestSequence > solutionState.solution.sourceEventSequence;
 
+  const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
+
   return (
     <div className="flex h-screen flex-col">
       <SessionLiveHeader
@@ -316,6 +319,8 @@ export function SessionLiveView({
         showSidebarToggle={!sidebarOpen}
         onToggleSidebar={toggleSidebar}
         onOpenCli={() => setCliDialogOpen(true)}
+        transcriptItems={transcriptItems}
+        solution={solutionState.solution}
       />
 
       <ResizablePanelGroup
@@ -331,6 +336,7 @@ export function SessionLiveView({
             onEvent={(event) => {
               void handleSessionEvent(event);
             }}
+            onTranscriptChange={setTranscriptItems}
           />
         </ResizablePanel>
 
