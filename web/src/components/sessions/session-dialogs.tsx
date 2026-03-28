@@ -1,9 +1,17 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { EntitlementSummary } from "@/lib/contracts/billing";
-import type { Session, SessionLanguage, SessionType } from "@/lib/contracts/session";
+import {
+  createSessionInputSchema,
+  type Session,
+  type SessionLanguage,
+  type SessionType,
+} from "@/lib/contracts/session";
 import {
   sessionLanguageOptions,
   sessionTypeOptions,
@@ -44,6 +52,12 @@ function normalizeSessionLanguage(type: SessionType, language: SessionLanguage |
   return type === "coding" ? (language ?? DEFAULT_SESSION_LANGUAGE) : null;
 }
 
+const sessionTitleSchema = z.object({
+  title: z.string().trim().min(1).max(50),
+});
+
+type SessionFormValues = z.infer<typeof sessionTitleSchema>;
+
 /* ------------------------------------------------------------------ */
 /*  Session form (shared by create and rename dialogs)                 */
 /* ------------------------------------------------------------------ */
@@ -75,11 +89,21 @@ function SessionForm({
   onSubmit: () => void;
   onCancel: () => void;
 }) {
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SessionFormValues>({
+    resolver: zodResolver(sessionTitleSchema),
+    defaultValues: { title },
+    mode: "onChange",
+  });
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit();
+        handleSubmit(() => onSubmit())();
       }}
       className="space-y-4"
     >
@@ -88,10 +112,13 @@ function SessionForm({
         <Input
           id={`${id}-title`}
           placeholder="e.g. Frontend system design"
-          value={title}
+          {...register("title")}
           onChange={(e) => onTitleChange(e.target.value)}
           autoFocus
         />
+        {errors.title && (
+          <p className="text-sm text-destructive">{errors.title.message}</p>
+        )}
       </div>
       <div className="space-y-2">
         <Label>Session type</Label>
@@ -141,7 +168,7 @@ function SessionForm({
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={!title.trim() || pending}>
+        <Button type="submit" disabled={pending}>
           {pending ? pendingLabel : submitLabel}
         </Button>
       </DialogFooter>
