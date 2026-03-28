@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSubscription } from "@trpc/tanstack-react-query";
 
@@ -210,6 +210,22 @@ export function SessionLiveView({
 
   const toggleSolutionMutation = useMutation(trpc.session.toggleSolution.mutationOptions());
 
+  const isVerticalLayout = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 768;
+  }, []);
+
+  const [verticalLayout, setVerticalLayout] = useState(isVerticalLayout);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setVerticalLayout(window.innerWidth < 768);
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const handleToggleSolution = useCallback(
     (checked: boolean) => {
       setSolutionEnabled(checked);
@@ -302,7 +318,10 @@ export function SessionLiveView({
         onOpenCli={() => setCliDialogOpen(true)}
       />
 
-      <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+      <ResizablePanelGroup
+        orientation={verticalLayout ? "vertical" : "horizontal"}
+        className="min-h-0 flex-1"
+      >
         <ResizablePanel defaultSize={50} minSize={25}>
           <SessionTranscriptPane
             sessionId={session.id}
