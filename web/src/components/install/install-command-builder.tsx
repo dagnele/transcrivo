@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
-import { Check, Copy, Download, ExternalLink } from "lucide-react";
+import { Check, Copy, ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ type Backend = "cpu" | "vulkan" | "cuda";
 const SOURCE_README_URL =
   "https://github.com/dagnele/transcrivo/blob/main/cli/README.md";
 const RELEASES_URL = "https://github.com/dagnele/transcrivo/releases";
+const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/dagnele/transcrivo/main/cli";
 
 const PLATFORM_OPTIONS: Array<{ value: Platform; label: string }> = [
   { value: "linux", label: "Linux" },
@@ -95,7 +96,7 @@ function CopyCommand({ value }: { value: string }) {
   );
 }
 
-export function InstallCommandBuilder({ appOrigin }: { appOrigin: string }) {
+export function InstallCommandBuilder() {
   const [platform, setPlatform] = useState<Platform>("linux");
   const [backend, setBackend] = useState<Backend>("cpu");
 
@@ -104,13 +105,17 @@ export function InstallCommandBuilder({ appOrigin }: { appOrigin: string }) {
     [backend],
   );
 
-  const scriptUrl = `${appOrigin}/${platform === "linux" ? "install.sh" : "install.ps1"}`;
-  const directDownloadUrl = `${RELEASES_URL}/latest/download/${ASSET_NAMES[platform][backend]}`;
+  const scriptUrl = `${GITHUB_RAW_BASE}/${platform === "linux" ? "install.sh" : "install.ps1"}`;
+
+  const installDescription =
+    platform === "linux"
+      ? "The installer downloads the latest release, installs to ~/.local/bin, and prints PATH guidance."
+      : "The installer downloads the latest release, installs to %LOCALAPPDATA%\\Programs\\Transcrivo\\bin, and prints PATH guidance.";
 
   const command =
     platform === "linux"
-      ? `curl -fsSL ${scriptUrl} | sh -s -- --backend ${backend}`
-      : `& ([scriptblock]::Create((irm ${scriptUrl}))) -Backend ${backend}`;
+      ? `curl -LsSf ${scriptUrl} | bash -s -- --backend ${backend}`
+      : `& ([scriptblock]::Create((irm "${scriptUrl}"))) -Backend ${backend}`;
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
@@ -171,25 +176,8 @@ export function InstallCommandBuilder({ appOrigin }: { appOrigin: string }) {
 
           <CopyCommand value={command} />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button asChild>
-              <Link href={directDownloadUrl} target="_blank" rel="noreferrer">
-                <Download className="h-4 w-4" />
-                Download selected binary
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href={RELEASES_URL} target="_blank" rel="noreferrer">
-                View all releases
-                <ExternalLink className="h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-
           <p className="text-sm leading-relaxed text-muted-foreground">
-            The installer downloads the latest GitHub release artifact for your selected
-            platform and backend, installs it into a user-local directory, and prints any
-            PATH guidance you still need.
+            {installDescription}
           </p>
         </CardContent>
       </Card>
@@ -229,6 +217,12 @@ export function InstallCommandBuilder({ appOrigin }: { appOrigin: string }) {
               <Button variant="outline" asChild>
                 <Link href={SOURCE_README_URL} target="_blank" rel="noreferrer">
                   Build from source
+                  <ExternalLink className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={RELEASES_URL} target="_blank" rel="noreferrer">
+                  View all releases
                   <ExternalLink className="h-4 w-4" />
                 </Link>
               </Button>

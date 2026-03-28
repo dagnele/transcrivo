@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Terminal } from "lucide-react";
+import { ArrowLeft, Terminal } from "lucide-react";
 
 import { InstallCommandBuilder } from "@/components/install/install-command-builder";
 import { SiteHeader } from "@/components/site-header";
@@ -23,8 +23,6 @@ export const metadata: Metadata = {
     description: "Install the Transcrivo CLI from the latest release binaries.",
   },
 };
-
-const APP_ORIGIN = "https://transcrivo.live";
 
 export default async function InstallPage() {
   return (
@@ -53,16 +51,10 @@ export default async function InstallPage() {
                 Back home
               </Link>
             </Button>
-            <Button asChild>
-              <Link href="/auth/sign-up">
-                Start free trial
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
           </div>
         </div>
 
-        <InstallCommandBuilder appOrigin={APP_ORIGIN} />
+        <InstallCommandBuilder />
 
         <section className="rounded-2xl border border-border/70 bg-muted/20 px-6 py-5">
           <div className="flex items-start gap-3">
@@ -74,11 +66,23 @@ export default async function InstallPage() {
                 After installation
               </h2>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Open the web app, create a session, generate a token, and run
-                <span className="mx-1 rounded bg-background px-1.5 py-0.5 font-mono text-xs text-foreground">
-                  transcrivo run
+                Open the web app, create a session, generate a token, then run this in your terminal:
+                <span className="mt-2 block rounded bg-background px-3 py-2 font-mono text-xs text-foreground">
+                  transcrivo run --token YOUR_TOKEN
                 </span>
-                with your token and backend URL.
+              </p>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                List available audio devices:
+                <span className="mt-2 block rounded bg-background px-3 py-2 font-mono text-xs text-foreground">
+                  transcrivo devices
+                </span>
+                Use{" "}
+                <span className="font-mono text-xs">--mic-device</span> to select your microphone and{" "}
+                <span className="font-mono text-xs">--system-device</span> to capture system audio (e.g., speakers).
+                Example:
+                <span className="mt-2 block rounded bg-background px-3 py-2 font-mono text-xs text-foreground">
+                  transcrivo run --token YOUR_TOKEN --mic-device mic-1 --system-device loopback-1
+                </span>
               </p>
             </div>
           </div>
