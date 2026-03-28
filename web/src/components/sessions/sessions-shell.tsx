@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -225,7 +225,14 @@ export function SessionsShell({
 
   // ---- Dialog state ----
 
+  const searchParams = useSearchParams();
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("create") === "true") {
+      setCreateOpen(true);
+    }
+  }, [searchParams]);
   const [renameSession, setRenameSession] = useState<Session | null>(null);
   const [deleteSession, setDeleteSession] = useState<Session | null>(null);
   const [cliSession, setCliSession] = useState<Session | null>(null);
@@ -282,7 +289,14 @@ export function SessionsShell({
       {/* Dialogs */}
       <CreateSessionDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("create");
+            window.history.replaceState({}, "", url.toString());
+          }
+        }}
         entitlementSummary={entitlementSummary}
         buyPending={buyPending}
         onBuySession={() => void handleBuySession()}

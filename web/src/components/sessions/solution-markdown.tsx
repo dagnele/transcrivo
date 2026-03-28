@@ -35,7 +35,8 @@ export function SolutionMarkdown({
   content,
   className,
 }: SolutionMarkdownProps) {
-  const usedIds = new Map<string, number>();
+  const usedIdsRef = React.useRef(new Map<string, number>());
+  const usedIds = usedIdsRef.current;
 
   const getHeadingText = (children: React.ReactNode): string =>
     React.Children.toArray(children)

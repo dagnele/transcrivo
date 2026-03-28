@@ -50,6 +50,11 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  icons: {
+    icon: "/transcrivo.svg",
+    shortcut: "/transcrivo.svg",
+    apple: "/transcrivo.svg",
+  },
 };
 
 export default function RootLayout({
