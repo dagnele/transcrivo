@@ -56,6 +56,7 @@ async function getEmailHtml(input: VerificationEmailInput) {
     <EmailTemplate
       action="Open Transcrivo"
       baseUrl={siteUrl}
+      imageUrl={`${siteUrl}/transcrivo.ico`}
       content={
         <>
           {getEmailIntro(input.type)}
