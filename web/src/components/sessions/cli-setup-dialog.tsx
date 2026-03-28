@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, Copy, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -84,12 +84,7 @@ export function CliSetupDialog({
     tokenMutation.mutate({ sessionId });
   }, [tokenMutation, sessionId]);
 
-  const command = token
-    ? [
-        "transcrivo run",
-        `  --token ${token}`,
-      ].join(" \\\n")
-    : null;
+  const command = token ? `transcrivo run --token ${token}` : null;
 
   return (
     <Dialog
@@ -103,116 +98,57 @@ export function CliSetupDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Connect via CLI</DialogTitle>
-            <DialogDescription>
-              Generate a token and run the command to start streaming audio to
-              this session. Tokens stay valid for 1 hour 30 minutes, and the
-              billing and session expiration are decided only after the CLI sends
-              <span className="mx-1 font-mono text-[11px]">session.start</span>.
-            </DialogDescription>
-          </DialogHeader>
+      <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Connect via CLI</DialogTitle>
+          <DialogDescription>
+            Generate a token and run the command to start streaming audio to
+            this session. See the{" "}
+            <Link href="/install" className="text-underline underline">
+              install guide
+            </Link>{" "}
+            for setup instructions.
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              1. Install the CLI
-            </p>
-            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-3 text-[11px] leading-relaxed text-muted-foreground">
-              <p>
-                Choose Linux or Windows, then pick the right runtime backend on the
-                install page.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" asChild>
-                  <Link href="/install" target="_blank" rel="noreferrer">
-                    Open install page
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              2. List available audio devices
-            </p>
-            <CopyBlock value="transcrivo devices" />
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              3. Generate a connection token
-            </p>
-            {token ? (
-              <>
+        <div className="space-y-4">
+          {token ? (
+            <>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Token</p>
                 <CopyBlock value={token} masked />
-                <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-                  <p>Token lifetime: 1 hour 30 minutes.</p>
-                  <p>
-                    Token expires at {formatTimestamp(tokenExpiresAt) ?? "-"}.
-                  </p>
-                  <p>
-                    The session itself expires 1 hour after the CLI starts it.
-                    Once expired, the session is closed and will not accept more
-                    CLI connections.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 gap-1 px-2 text-xs text-muted-foreground"
-                    onClick={generateToken}
-                    disabled={tokenMutation.isPending}
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Regenerate
-                  </Button>
-                </div>
-                <p className="text-[11px] text-muted-foreground/60">
-                  Regenerate the token if the token expired. If the session
-                  expired, create a new session instead.
+                <p className="text-xs text-muted-foreground">
+                  Expires at {formatTimestamp(tokenExpiresAt) ?? "-"}.
                 </p>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  onClick={generateToken}
-                  disabled={tokenMutation.isPending}
-                >
-                  {tokenMutation.isPending ? "Generating..." : "Generate token"}
-                </Button>
-                {tokenError && (
-                  <p className="text-xs text-destructive">{tokenError}</p>
-                )}
-              </>
-            )}
-          </div>
-
-          {command && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                4. Start streaming
-              </p>
-              <CopyBlock value={command} />
-              <p className="text-[11px] leading-relaxed text-muted-foreground/70">
-                Add{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
-                  --mic-device
-                </code>{" "}
-                or{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
-                  --system-device
-                </code>{" "}
-                to select specific audio sources.
-              </p>
-            </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Run this command</p>
+                <CopyBlock value={command!} />
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={generateToken}
+                disabled={tokenMutation.isPending}
+              >
+                <RefreshCw className="mr-2 h-3 w-3" />
+                Regenerate token
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={generateToken}
+                disabled={tokenMutation.isPending}
+              >
+                {tokenMutation.isPending ? "Generating..." : "Generate token"}
+              </Button>
+              {tokenError && (
+                <p className="text-xs text-destructive">{tokenError}</p>
+              )}
+            </>
           )}
         </div>
       </DialogContent>
