@@ -84,7 +84,7 @@ export const sessionSchema = sessionBaseSchema
 
 export const createSessionInputSchema = z
   .object({
-    title: z.string().trim().min(1).max(160),
+    title: z.string().trim().min(1).max(100),
     type: sessionTypeSchema.default("coding"),
     language: sessionLanguageSchema.nullable().default(null),
   })
@@ -97,7 +97,7 @@ export const sessionIdInputSchema = z.object({
 export const updateSessionInputSchema = z
   .object({
     sessionId: sessionIdSchema,
-    title: z.string().trim().min(1).max(160),
+    title: z.string().trim().min(1).max(100),
     type: sessionTypeSchema,
     language: sessionLanguageSchema.nullable(),
   })
