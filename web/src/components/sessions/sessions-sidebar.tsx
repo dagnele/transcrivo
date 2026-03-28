@@ -1,33 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ChevronLeft,
-  Hash,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Terminal,
-  Trash2,
-} from "lucide-react";
+import { ChevronLeft, Plus } from "lucide-react";
 import { UserButton } from "@daveyplate/better-auth-ui";
 
 import type { EntitlementSummary } from "@/lib/contracts/billing";
 import type { Session } from "@/lib/contracts/session";
-import {
-  getSessionLanguageLabel,
-  getSessionTypeLabel,
-} from "@/lib/session-config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { SessionStatusBadge } from "@/components/sessions/session-status-badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SessionCard } from "./session-card";
 
 function getAvailabilityCopy(summary: EntitlementSummary | null) {
   if (!summary) {
@@ -163,97 +145,16 @@ export function SessionsSidebar({
               </Button>
             </div>
           ) : (
-            <div className="space-y-0.5 pb-4">
-              {sessions.map((session) => {
-                const isActive = session.id === activeSessionId;
-
-                return (
-                  <div
-                    key={session.id}
-                    className={cn(
-                      "group rounded-md transition-colors",
-                      isActive
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-                    )}
-                  >
-                    <Link
-                      href={`/sessions/${session.id}`}
-                      className="flex items-center gap-2 px-2.5 py-1.5"
-                      onClick={onCloseMobile}
-                    >
-                      <Hash className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <p className="min-w-0 flex-1 truncate text-sm">
-                            {session.title}
-                          </p>
-                          <SessionStatusBadge
-                            status={session.status}
-                            createdAt={session.createdAt}
-                            startedAt={session.startedAt}
-                            expiresAt={session.expiresAt}
-                            className="shrink-0 h-4 px-1 text-[10px] capitalize"
-                            popoverAlign="end"
-                          />
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                }}
-                              >
-                                <MoreHorizontal className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                              <DropdownMenuItem
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  onSessionAction("cli", session);
-                                }}
-                              >
-                                <Terminal className="mr-2 h-3.5 w-3.5" />
-                                Connect via CLI
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  onSessionAction("rename", session);
-                                }}
-                              >
-                                <Pencil className="mr-2 h-3.5 w-3.5" />
-                                Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  onSessionAction("delete", session);
-                                }}
-                              >
-                                <Trash2 className="mr-2 h-3.5 w-3.5" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          {getSessionTypeLabel(session.type)}
-                          {session.type === "coding" ? ` / ${getSessionLanguageLabel(session.language)}` : null}
-                        </span>
-                      </div>
-                    </Link>
-                  </div>
-                );
-              })}
+            <div className="space-y-0.5 pb-4 min-w-0 overflow-hidden">
+              {sessions.map((session) => (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  isActive={session.id === activeSessionId}
+                  onCloseMobile={onCloseMobile}
+                  onSessionAction={onSessionAction}
+                />
+              ))}
             </div>
           )}
         </ScrollArea>
