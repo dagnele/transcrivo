@@ -110,7 +110,7 @@ export function InstallCommandBuilder() {
   const installDescription =
     platform === "linux"
       ? "The installer downloads the latest release, installs to ~/.local/bin, and prints PATH guidance."
-      : "The installer downloads the latest release, installs to %LOCALAPPDATA%\\Programs\\Transcrivo\\bin, and prints PATH guidance.";
+      : "The installer downloads the latest release, installs to %LOCALAPPDATA%\\Transcrivo\\bin, and prints PATH guidance.";
 
   const command =
     platform === "linux"

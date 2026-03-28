@@ -2,7 +2,7 @@ param(
   [ValidateSet("cpu", "vulkan", "cuda")]
   [string] $Backend = "cpu",
 
-  [string] $InstallDir = "$env:LOCALAPPDATA\Programs\Transcrivo\bin"
+  [string] $InstallDir = "$env:LOCALAPPDATA\Transcrivo\bin"
 )
 
 $ErrorActionPreference = "Stop"
