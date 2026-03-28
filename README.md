@@ -39,8 +39,4 @@ This is useful when you want a grounded, real-time companion that can follow wha
 
 ## License
 
-- `BSL 1.1` applies to the original repository contents today.
-- Private self-hosting and internal business use are allowed under the Additional Use Grant in `LICENSE`.
-- The code converts to `Apache-2.0` on `2030-03-24`, or earlier for a given version if required by the standard `BSL 1.1` timing rules.
-- Trademarks, product names, and logos are not licensed; see `TRADEMARKS.md`.
-- Contributions are accepted under the contribution terms in `CONTRIBUTING.md`.
+See `LICENSE` for details. Trademarks are covered in `TRADEMARKS.md`.

@@ -14,10 +14,7 @@ Thanks for your interest in improving Transcrivo.
 By intentionally submitting code, documentation, or other material to this
 repository, you represent that you have the right to submit it and you agree
 that Daniele Galdi may use, modify, sublicense, and redistribute your
-contribution as part of this project under:
-
-- the repository's current `Business Source License 1.1` terms, and
-- the repository's future `Apache-2.0` Change License terms.
+contribution under the terms in `LICENSE`.
 
 If you do not want to license your contribution under those terms, please do not
 submit it.
