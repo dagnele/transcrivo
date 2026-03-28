@@ -6,11 +6,10 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { EntitlementSummary } from "@/lib/contracts/billing";
-import {
-  createSessionInputSchema,
-  type Session,
-  type SessionLanguage,
-  type SessionType,
+import type {
+  Session,
+  SessionLanguage,
+  SessionType,
 } from "@/lib/contracts/session";
 import {
   sessionLanguageOptions,

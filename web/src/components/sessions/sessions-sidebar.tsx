@@ -48,7 +48,7 @@ type SessionsSidebarProps = {
   entitlementSummary: EntitlementSummary | null;
   buyPending: boolean;
   isDesktop: boolean;
-  sidebarCollapsed: boolean;
+  sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onCloseMobile: () => void;
   onCreateOpen: () => void;
@@ -63,7 +63,7 @@ export function SessionsSidebar({
   entitlementSummary,
   buyPending,
   isDesktop,
-  sidebarCollapsed,
+  sidebarOpen,
   onToggleSidebar,
   onCloseMobile,
   onCreateOpen,
@@ -74,7 +74,7 @@ export function SessionsSidebar({
 
   return (
     <>
-      {!isDesktop && !sidebarCollapsed ? (
+      {!isDesktop && sidebarOpen ? (
         <button
           type="button"
           aria-label="Close sessions panel"
@@ -87,16 +87,16 @@ export function SessionsSidebar({
         className={cn(
           "absolute inset-y-0 left-0 z-30 flex shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar transition-[width,transform,border-color] duration-200 ease-out lg:relative lg:z-auto",
           isDesktop
-            ? sidebarCollapsed
-              ? "w-0 border-r-transparent"
-              : "w-72 translate-x-0"
-            : sidebarCollapsed
-              ? "w-72 -translate-x-full shadow-none"
-              : "w-72 translate-x-0 shadow-2xl",
+            ? sidebarOpen
+              ? "w-72 translate-x-0"
+              : "w-0 overflow-x-hidden border-r-transparent"
+            : sidebarOpen
+              ? "w-72 translate-x-0 shadow-2xl"
+              : "w-72 -translate-x-full shadow-none",
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-4">
+        <div className="flex items-center justify-between px-4 py-2.5">
           <Link
             href="/sessions"
             className="text-[11px] font-medium uppercase tracking-[0.24em] text-muted-foreground transition-colors hover:text-sidebar-foreground"

@@ -6,6 +6,7 @@ import { useSubscription } from "@trpc/tanstack-react-query";
 
 import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
 import { SessionLiveHeader } from "@/components/sessions/session-live-header";
+import { useSessionsSidebar } from "@/components/sessions/sessions-shell";
 import { SessionTranscriptPane } from "@/components/sessions/session-transcript-pane";
 import { SolutionPane } from "@/components/sessions/session-solution-pane";
 import {
@@ -192,6 +193,7 @@ export function SessionLiveView({
 }: SessionLiveViewProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
+  const { sidebarOpen, toggleSidebar } = useSessionsSidebar();
   const [cliDialogOpen, setCliDialogOpen] = useState(false);
   const [lifecycleState, setLifecycleState] = useState<LifecycleState>({
     status: session.status,
@@ -295,6 +297,8 @@ export function SessionLiveView({
         expiresAt={lifecycleState.expiresAt}
         accessKind={lifecycleState.accessKind}
         trialEndsAt={lifecycleState.trialEndsAt}
+        showSidebarToggle={!sidebarOpen}
+        onToggleSidebar={toggleSidebar}
         onOpenCli={() => setCliDialogOpen(true)}
       />
 

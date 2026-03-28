@@ -1,9 +1,8 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, createContext, useContext } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
 
 import { authClient } from "@/lib/auth-client";
 import type { EntitlementSummary } from "@/lib/contracts/billing";
@@ -24,18 +23,7 @@ import {
 /*  Constants & helpers                                                 */
 /* ------------------------------------------------------------------ */
 
-const SIDEBAR_STORAGE_KEY = "transcrivo.sessions-sidebar-collapsed";
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
-
-function getSidebarState() {
-  const isDesktop = window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
-  const saved = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-
-  return {
-    isDesktop,
-    sidebarCollapsed: saved !== null ? saved === "true" : !isDesktop,
-  };
-}
 
 function getActiveSessionId(pathname: string) {
   const match = pathname.match(/^\/sessions\/([^/]+)$/);
@@ -45,6 +33,27 @@ function getActiveSessionId(pathname: string) {
 
 function isSessionsIndex(pathname: string) {
   return pathname === "/sessions";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Context                                                            */
+/* ------------------------------------------------------------------ */
+
+type SessionsSidebarContextValue = {
+  isDesktop: boolean;
+  sidebarOpen: boolean;
+  toggleSidebar: () => void;
+  closeSidebar: () => void;
+};
+
+const SessionsSidebarContext = createContext<SessionsSidebarContextValue | null>(null);
+
+export function useSessionsSidebar() {
+  const context = useContext(SessionsSidebarContext);
+  if (!context) {
+    throw new Error("useSessionsSidebar must be used within SessionsShell");
+  }
+  return context;
 }
 
 /* ------------------------------------------------------------------ */
@@ -80,50 +89,39 @@ export function SessionsShell({
   // ---- Sidebar responsive state ----
 
   const [isDesktop, setIsDesktop] = useState(true);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
-    const syncViewport = () => {
-      const nextState = getSidebarState();
-      setIsDesktop(nextState.isDesktop);
-      setSidebarCollapsed(nextState.sidebarCollapsed);
+    const handleChange = () => {
+      setIsDesktop(mediaQuery.matches);
     };
 
-    syncViewport();
-    mediaQuery.addEventListener("change", syncViewport);
+    setIsDesktop(mediaQuery.matches);
+
+    mediaQuery.addEventListener("change", handleChange);
     return () => {
-      mediaQuery.removeEventListener("change", syncViewport);
+      mediaQuery.removeEventListener("change", handleChange);
     };
-  }, []);
-
-  const persistCollapsed = useCallback((value: boolean) => {
-    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(value));
   }, []);
 
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((current) => {
-      const next = !current;
-      persistCollapsed(next);
-      return next;
-    });
-  }, [persistCollapsed]);
+    setSidebarOpen((current) => !current);
+  }, []);
 
-  const closeSidebarOnMobile = useCallback(() => {
-    if (!isDesktop) {
-      setSidebarCollapsed(true);
-    }
-  }, [isDesktop]);
+  const closeSidebar = useCallback(() => {
+    setSidebarOpen(false);
+  }, []);
 
   // Lock body scroll when mobile overlay is open
   useEffect(() => {
-    if (!isDesktop && !sidebarCollapsed) {
+    if (!isDesktop && sidebarOpen) {
       document.body.style.overflow = "hidden";
       return () => {
         document.body.style.overflow = "";
       };
     }
-  }, [isDesktop, sidebarCollapsed]);
+  }, [isDesktop, sidebarOpen]);
 
   // ---- Data queries ----
 
@@ -190,11 +188,11 @@ export function SessionsShell({
   const handleCreate = useCallback(
     async (input: { title: string; type: SessionType; language: SessionLanguage | null }) => {
       const session = await createMutation.mutateAsync(input);
-      closeSidebarOnMobile();
+      closeSidebar();
       await invalidateAll();
       router.push(`/sessions/${session.id}`);
     },
-    [closeSidebarOnMobile, createMutation, invalidateAll, router],
+    [closeSidebar, createMutation, invalidateAll, router],
   );
 
   const handleRename = useCallback(
@@ -247,37 +245,35 @@ export function SessionsShell({
 
   // ---- Render ----
 
-  return (
-    <div className="flex h-screen">
-      <SessionsSidebar
-        sessions={visibleSessions}
-        sessionsError={visibleSessionsError}
-        activeSessionId={activeSessionId}
-        entitlementSummary={entitlementSummary}
-        buyPending={buyPending}
-        isDesktop={isDesktop}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={toggleSidebar}
-        onCloseMobile={closeSidebarOnMobile}
-        onCreateOpen={() => setCreateOpen(true)}
-        onBuySession={() => void handleBuySession()}
-        onSessionAction={handleSessionAction}
-      />
+  const sidebarContextValue: SessionsSidebarContextValue = {
+    isDesktop,
+    sidebarOpen,
+    toggleSidebar,
+    closeSidebar,
+  };
 
-      {/* Main content */}
-      <main className="relative min-w-0 flex-1 overflow-y-auto">
-        {sidebarCollapsed ? (
-          <button
-            type="button"
-            className="absolute inset-y-0 left-0 z-10 flex w-6 items-center justify-center bg-transparent opacity-0 transition-opacity hover:bg-sidebar/50 hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none"
-            onClick={toggleSidebar}
-            aria-label="Show sessions panel"
-          >
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </button>
-        ) : null}
-        {children}
-      </main>
+  return (
+    <SessionsSidebarContext.Provider value={sidebarContextValue}>
+      <div className="flex h-screen">
+        <SessionsSidebar
+          sessions={visibleSessions}
+          sessionsError={visibleSessionsError}
+          activeSessionId={activeSessionId}
+          entitlementSummary={entitlementSummary}
+          buyPending={buyPending}
+          isDesktop={isDesktop}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={toggleSidebar}
+          onCloseMobile={closeSidebar}
+          onCreateOpen={() => setCreateOpen(true)}
+          onBuySession={() => void handleBuySession()}
+          onSessionAction={handleSessionAction}
+        />
+
+        {/* Main content */}
+        <main className="relative min-w-0 flex-1 overflow-y-auto">
+          {children}
+        </main>
 
       {/* Dialogs */}
       <CreateSessionDialog
@@ -308,6 +304,7 @@ export function SessionsShell({
         }}
         sessionId={cliSession?.id ?? ""}
       />
-    </div>
+      </div>
+    </SessionsSidebarContext.Provider>
   );
 }

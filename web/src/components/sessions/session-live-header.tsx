@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Terminal } from "lucide-react";
+import { PanelLeft, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
@@ -17,6 +17,8 @@ type SessionLiveHeaderProps = {
   expiresAt: Date | null;
   accessKind: string | null;
   trialEndsAt: Date | null;
+  showSidebarToggle: boolean;
+  onToggleSidebar: () => void;
   onOpenCli: () => void;
 };
 
@@ -68,6 +70,8 @@ export function SessionLiveHeader({
   expiresAt,
   accessKind,
   trialEndsAt,
+  showSidebarToggle,
+  onToggleSidebar,
   onOpenCli,
 }: SessionLiveHeaderProps) {
   const isTrial = accessKind === "trial";
@@ -76,6 +80,16 @@ export function SessionLiveHeader({
   return (
     <header className="flex shrink-0 items-center justify-between border-b border-border/60 px-6 py-2.5">
       <div className="flex items-center gap-3">
+        {showSidebarToggle ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onToggleSidebar}
+            aria-label="Show sessions panel"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+        ) : null}
         <h1 className="text-sm font-medium text-foreground">{session.title}</h1>
         <span className="text-xs text-muted-foreground">
           {getSessionTypeLabel(session.type)}
