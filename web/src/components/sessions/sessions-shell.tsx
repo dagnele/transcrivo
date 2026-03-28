@@ -43,6 +43,10 @@ function getActiveSessionId(pathname: string) {
   return decodeURIComponent(match[1]);
 }
 
+function isSessionsIndex(pathname: string) {
+  return pathname === "/sessions";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
 /* ------------------------------------------------------------------ */
@@ -68,7 +72,10 @@ export function SessionsShell({
   const router = useRouter();
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const activeSessionId = getActiveSessionId(pathname);
+  const activeSessionIdFromUrl = getActiveSessionId(pathname);
+  const isIndex = isSessionsIndex(pathname);
+
+  const activeSessionId = activeSessionIdFromUrl;
 
   // ---- Sidebar responsive state ----
 
@@ -134,6 +141,12 @@ export function SessionsShell({
   const visibleSessions = sessionsQuery.data?.items ?? sessions;
   const visibleSessionsError =
     sessionsError ?? (sessionsQuery.error instanceof Error ? sessionsQuery.error.message : null);
+
+  useEffect(() => {
+    if (isIndex && visibleSessions.length > 0 && !activeSessionIdFromUrl) {
+      router.push(`/sessions/${visibleSessions[0].id}`);
+    }
+  }, [isIndex, visibleSessions, activeSessionIdFromUrl, router]);
 
   const entitlementsQuery = useQuery(
     trpc.billing.entitlements.queryOptions(undefined, {
