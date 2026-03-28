@@ -19,7 +19,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }}
       Link={Link}
       redirectTo="/sessions"
-      providers={["google"]}
+      social={{
+        providers: ["google"],
+      }}
       account={{ basePath: "/sessions/account" }}
       emailVerification={{
         otp: true,
