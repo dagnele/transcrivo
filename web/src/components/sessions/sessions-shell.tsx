@@ -110,8 +110,10 @@ export function SessionsShell({
   }, []);
 
   const closeSidebar = useCallback(() => {
-    setSidebarOpen(false);
-  }, []);
+    if (!isDesktop) {
+      setSidebarOpen(false);
+    }
+  }, [isDesktop]);
 
   // Lock body scroll when mobile overlay is open
   useEffect(() => {
