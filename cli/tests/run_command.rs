@@ -90,7 +90,7 @@ fn build_session_start_message_includes_selected_device_ids() {
     assert_eq!(message.payload["mic_device_id"], "mic-1");
     assert_eq!(message.payload["system_device_id"], "sys-1");
     assert_eq!(message.payload["transcription_backend"], "whisper-rs");
-    assert_eq!(message.payload["model"], "small.en");
+    assert_eq!(message.payload["model"], "large");
 }
 
 #[test]

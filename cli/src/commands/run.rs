@@ -126,7 +126,7 @@ pub struct RunArgs {
 
     #[arg(
         long,
-        help = "Override whisper.cpp model name. Defaults to `small.en` when not set."
+        help = "Override whisper.cpp model name. Defaults to `large` when not set."
     )]
     pub whisper_model_name: Option<String>,
 
@@ -156,7 +156,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
     if let Some(model_name) = args.whisper_model_name.as_deref() {
         validate_model_name(model_name)?;
     }
-    let requested_model = args.whisper_model_name.as_deref().unwrap_or("small.en");
+    let requested_model = args.whisper_model_name.as_deref().unwrap_or("large");
     let _ = ensure_model_downloaded(requested_model).await?;
     let backend_url = validate_backend_url(&args.backend_url)?;
     let token = validate_required_text(
@@ -1039,7 +1039,7 @@ pub struct TranscriptionConfig {
 
 impl TranscriptionConfig {
     pub fn model_name(&self) -> &str {
-        self.whisper_model_name.as_deref().unwrap_or("small.en")
+        self.whisper_model_name.as_deref().unwrap_or("large")
     }
 }
 
@@ -1058,7 +1058,7 @@ fn build_interruptible_transcription_adapter(
     shutdown: &ShutdownController,
 ) -> Result<WhisperCppAdapter, TranscriptionError> {
     let mut config = WhisperCppConfig {
-        language: Some("en".to_string()),
+        language: None,
         ..WhisperCppConfig::default()
     };
     if let Some(model_name) = &config_args.whisper_model_name {

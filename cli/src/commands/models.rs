@@ -9,20 +9,7 @@ use tracing::info;
 use crate::util::paths::default_models_dir;
 
 const BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
-const KNOWN_MODELS: &[&str] = &[
-    "tiny",
-    "tiny.en",
-    "base",
-    "base.en",
-    "small",
-    "small.en",
-    "medium",
-    "medium.en",
-    "large-v1",
-    "large-v2",
-    "large-v3",
-    "large-v3-turbo",
-];
+const KNOWN_MODELS: &[&str] = &["tiny", "small", "medium", "large"];
 
 #[derive(Debug, Args)]
 pub struct ModelsArgs {
@@ -39,7 +26,7 @@ pub enum ModelsCommand {
 
 #[derive(Debug, Args)]
 pub struct DownloadArgs {
-    #[arg(help = "Whisper model name, for example `small.en` or `base`.")]
+    #[arg(help = "Whisper model name, for example `small` or `base`.")]
     pub model: String,
 
     #[arg(
@@ -206,7 +193,11 @@ pub fn validate_model_name(model: &str) -> Result<()> {
 }
 
 fn model_filename(model: &str) -> String {
-    format!("ggml-{model}.bin")
+    let resolved = match model {
+        "large" => "large-v3",
+        other => other,
+    };
+    format!("ggml-{resolved}.bin")
 }
 
 fn print_progress(filename: &str, downloaded_bytes: u64, total_bytes: Option<u64>) {
@@ -234,12 +225,13 @@ mod tests {
 
     #[test]
     fn validates_known_model_names() {
-        validate_model_name("small.en").expect("small.en should be supported");
+        validate_model_name("small").expect("small should be supported");
         assert!(validate_model_name("unknown-model").is_err());
     }
 
     #[test]
     fn model_filename_matches_ggml_naming() {
-        assert_eq!(model_filename("small.en"), "ggml-small.en.bin");
+        assert_eq!(model_filename("small"), "ggml-small.bin");
+        assert_eq!(model_filename("large"), "ggml-large-v3.bin");
     }
 }

@@ -9,7 +9,7 @@ use crate::audio::preprocess::AudioChunk;
 use crate::util::paths::default_models_dir;
 use crate::util::shutdown::ShutdownController;
 
-pub const DEFAULT_MODEL_NAME: &str = "small.en";
+pub const DEFAULT_MODEL_NAME: &str = "large";
 pub const DEFAULT_MODEL_DIR_ENV: &str = "TRANSCRIVO_WHISPER_MODEL_DIR";
 pub const DEFAULT_MODEL_PATH_ENV: &str = "TRANSCRIVO_WHISPER_MODEL_PATH";
 
@@ -434,7 +434,11 @@ fn model_file_name(model_name: &str) -> String {
     if model_name.ends_with(".bin") {
         model_name.to_string()
     } else {
-        format!("ggml-{model_name}.bin")
+        let resolved = match model_name {
+            "large" => "large-v3",
+            other => other,
+        };
+        format!("ggml-{resolved}.bin")
     }
 }
 
@@ -471,7 +475,8 @@ mod tests {
 
     #[test]
     fn model_file_name_adds_ggml_prefix() {
-        assert_eq!(model_file_name("small.en"), "ggml-small.en.bin");
+        assert_eq!(model_file_name("small"), "ggml-small.bin");
+        assert_eq!(model_file_name("large"), "ggml-large-v3.bin");
         assert_eq!(model_file_name("custom.bin"), "custom.bin");
     }
 
