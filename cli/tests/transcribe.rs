@@ -253,6 +253,47 @@ async fn pipeline_drops_blank_audio_segments() {
 }
 
 #[tokio::test]
+async fn pipeline_drops_punctuation_only_segments() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: ".".to_string(),
+        start_ms: 0,
+        end_ms: 1000,
+        is_partial: false,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, true);
+
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::Mic, 0, 1000))
+        .await
+        .expect("punctuation-only audio should be ignored");
+
+    assert!(messages.is_empty());
+    assert!(!pipeline.has_pending());
+}
+
+#[tokio::test]
+async fn pipeline_flush_ignores_punctuation_only_partial() {
+    let session = Arc::new(SessionManager::new(Some("linux".to_string())));
+    let adapter = build_adapter(vec![vec![TranscriptSegment {
+        text: ".".to_string(),
+        start_ms: 0,
+        end_ms: 1000,
+        is_partial: true,
+    }]]);
+    let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, true);
+
+    let partial_messages =
+        pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::Mic, 0, 1000))
+            .await
+            .expect("punctuation-only partial should be ignored");
+    let final_messages = pipeline.flush_pending().expect("flush should work");
+
+    assert!(partial_messages.is_empty());
+    assert!(final_messages.is_empty());
+    assert!(!pipeline.has_pending());
+}
+
+#[tokio::test]
 async fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";

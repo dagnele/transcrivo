@@ -18,6 +18,7 @@ pub struct WhisperCppConfig {
     pub model_name: String,
     pub language: Option<String>,
     pub translate: bool,
+    pub use_context: bool,
     pub use_gpu: bool,
     pub flash_attn: bool,
     pub gpu_device: i32,
@@ -29,6 +30,7 @@ impl Default for WhisperCppConfig {
             model_name: DEFAULT_MODEL_NAME.to_string(),
             language: None,
             translate: false,
+            use_context: true,
             use_gpu: cfg!(feature = "whisper-gpu"),
             flash_attn: false,
             gpu_device: 0,
@@ -168,7 +170,7 @@ impl WhisperBackend for RealWhisperBackend {
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_print_timestamps(false);
-        params.set_no_context(true);
+        params.set_no_context(!config.use_context);
         params.set_translate(config.translate);
         params.set_single_segment(false);
         params.set_language(language.as_deref());

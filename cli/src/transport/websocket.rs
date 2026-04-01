@@ -13,7 +13,7 @@ use tracing::{debug, info};
 
 use crate::transport::protocol::{parse_message, serialize_message, MessageEnvelope, MessageType};
 
-pub const DEFAULT_READY_TIMEOUT_SECONDS: f64 = 5.0;
+pub const DEFAULT_SESSION_READY_TIMEOUT_SECONDS: f64 = 5.0;
 
 type ClientStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 

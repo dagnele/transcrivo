@@ -10,7 +10,9 @@ use tokio_tungstenite::{
 };
 
 use transcrivo_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
-use transcrivo_cli_rs::transport::{BackendWebSocketClient, DEFAULT_READY_TIMEOUT_SECONDS};
+use transcrivo_cli_rs::transport::{
+    BackendWebSocketClient, DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
+};
 
 struct AuthHeaderRecorder {
     auth_header: Arc<Mutex<Option<String>>>,
@@ -107,7 +109,7 @@ async fn connect_send_and_receive_ready() {
         .await
         .expect("send start");
     let ready = client
-        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .wait_for_session_ready(DEFAULT_SESSION_READY_TIMEOUT_SECONDS)
         .await
         .expect("wait for ready");
     client.close().await.expect("close client");
@@ -193,7 +195,7 @@ async fn backend_error_is_returned_while_waiting_for_ready() {
         .expect("send start");
 
     let error = client
-        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .wait_for_session_ready(DEFAULT_SESSION_READY_TIMEOUT_SECONDS)
         .await
         .expect_err("backend error should fail ready wait");
     client.close().await.expect("close client");
@@ -274,7 +276,7 @@ async fn backend_error_preserves_error_code_while_waiting_for_ready() {
         .expect("send start");
 
     let error = client
-        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .wait_for_session_ready(DEFAULT_SESSION_READY_TIMEOUT_SECONDS)
         .await
         .expect_err("backend error should fail ready wait");
     client.close().await.expect("close client");
@@ -371,7 +373,7 @@ async fn wait_for_ready_ignores_control_frames() {
         .expect("send start");
 
     let ready = client
-        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .wait_for_session_ready(DEFAULT_SESSION_READY_TIMEOUT_SECONDS)
         .await
         .expect("wait for ready");
     client.close().await.expect("close client");
@@ -446,7 +448,7 @@ async fn wait_for_ready_rejects_non_ok_status() {
         .expect("send start");
 
     let ready = client
-        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .wait_for_session_ready(DEFAULT_SESSION_READY_TIMEOUT_SECONDS)
         .await
         .expect("wait for ready");
     let error = transcrivo_cli_rs::session::manager::SessionManager::new(Some("linux".to_string()))

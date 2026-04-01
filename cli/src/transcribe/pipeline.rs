@@ -339,7 +339,9 @@ fn combine_segments(segments: &[TranscriptSegment]) -> PendingUtterance {
 
 fn is_meaningful_transcript_text(text: &str) -> bool {
     let trimmed = text.trim();
-    !trimmed.is_empty() && trimmed != "[BLANK_AUDIO]"
+    !trimmed.is_empty()
+        && trimmed != "[BLANK_AUDIO]"
+        && trimmed.chars().any(char::is_alphanumeric)
 }
 
 fn split_text_for_cutoff(text: &str, max_chars: usize) -> Option<ForcedCut> {

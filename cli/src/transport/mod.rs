@@ -3,5 +3,5 @@ pub mod websocket;
 
 pub use websocket::{
     BackendSessionError, BackendWebSocketClient, WebSocketClientError,
-    DEFAULT_READY_TIMEOUT_SECONDS,
+    DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
 };

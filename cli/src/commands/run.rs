@@ -20,7 +20,7 @@ use crate::transcribe::whisper_cpp::{
 };
 use crate::transport::protocol::{MessageEnvelope, ProtocolError};
 use crate::transport::{
-    BackendWebSocketClient, WebSocketClientError, DEFAULT_READY_TIMEOUT_SECONDS,
+    BackendWebSocketClient, WebSocketClientError, DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
 };
 use crate::util::shutdown::ShutdownController;
 use crate::util::whisper_log;
@@ -28,10 +28,9 @@ use crate::util::whisper_log;
 const SESSION_EXPIRED_ERROR_CODE: &str = "session_expired";
 const SESSION_CLOSED_ERROR_CODE: &str = "session_closed";
 
-const LIVE_SILENCE_HOLD_MS: u64 = 1_000;
-const LIVE_MIC_MIN_RMS: f32 = 0.0025;
-const LIVE_SYSTEM_MIN_RMS: f32 = 0.01;
-const TRANSCRIPTION_CHUNK_MS: u32 = 5_000;
+const DEFAULT_SILENCE_HOLD_MS: u64 = 1_000;
+const DEFAULT_MIN_RMS: f32 = 0.005;
+const DEFAULT_CHUNK_MS: u32 = 5_000;
 const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const BACKEND_MESSAGE_POLL_TIMEOUT: Duration = Duration::from_millis(10);
 const CAPTURE_CHANNEL_CAPACITY: usize = 256;
@@ -66,6 +65,7 @@ struct SourceRuntime {
     preprocess: PreprocessState,
     inference_tx: mpsc::Sender<InferenceRequest>,
     silence_tracker: SilenceTracker,
+    live_config: LiveAudioConfig,
 }
 
 #[derive(Debug, Default)]
@@ -107,7 +107,7 @@ pub struct RunArgs {
     pub backend_url: String,
 
     #[arg(long, help = "Bearer token for backend authentication")]
-    pub token: Option<String>,
+    pub token: String,
 
     #[arg(
         long,
@@ -123,9 +123,59 @@ pub struct RunArgs {
 
     #[arg(
         long,
-        help = "Override whisper.cpp model name. Defaults to `large` when not set."
+        default_value = "large",
+        help = "Override whisper.cpp model name."
     )]
-    pub whisper_model_name: Option<String>,
+    pub whisper_model_name: String,
+
+    #[arg(
+        long,
+        default_value_t = DEFAULT_CHUNK_MS,
+        help = "Audio chunk size in milliseconds before sending audio to whisper. Defaults to 5000."
+    )]
+    pub chunk_ms: u32,
+
+    #[arg(
+        long,
+        default_value_t = DEFAULT_SILENCE_HOLD_MS,
+        help = "Silence duration in milliseconds required before finalizing a pending utterance. Defaults to 1000."
+    )]
+    pub silence_hold_ms: u64,
+
+    #[arg(
+        long,
+        default_value_t = DEFAULT_MIN_RMS,
+        help = "Minimum RMS level required to treat microphone audio as speech. Defaults to 0.005."
+    )]
+    pub mic_min_rms: f32,
+
+    #[arg(
+        long,
+        default_value_t = DEFAULT_MIN_RMS,
+        help = "Minimum RMS level required to treat system audio as speech. Defaults to 0.005."
+    )]
+    pub system_min_rms: f32,
+
+    #[arg(
+        long,
+        default_value_t = DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
+        help = "Timeout in seconds while waiting for backend session.ready. Defaults to 5.0."
+    )]
+    pub session_ready_timeout_seconds: f64,
+
+    #[arg(
+        long,
+        default_value = "en",
+        help = "Language code for whisper decoding. Defaults to en. Use `auto` to enable language detection."
+    )]
+    pub whisper_language: String,
+
+    #[arg(
+        long,
+        default_value_t = true,
+        help = "Reuse prior whisper decoding context across chunks. Defaults to true. May improve continuity, but can increase drift or repetition in live transcription."
+    )]
+    pub whisper_use_context: bool,
 
     #[arg(
         long,
@@ -150,18 +200,11 @@ pub struct RunArgs {
 }
 
 pub async fn execute(args: &RunArgs) -> Result<()> {
-    if let Some(model_name) = args.whisper_model_name.as_deref() {
-        validate_model_name(model_name)?;
-    }
-    let requested_model = args.whisper_model_name.as_deref().unwrap_or("large");
+    validate_model_name(&args.whisper_model_name)?;
+    let requested_model = args.whisper_model_name.as_str();
     let _ = ensure_model_downloaded(requested_model).await?;
     let backend_url = validate_backend_url(&args.backend_url)?;
-    let token = validate_required_text(
-        "token",
-        args.token
-            .as_deref()
-            .ok_or_else(|| anyhow::anyhow!("token is required"))?,
-    )?;
+    let token = validate_required_text("token", &args.token)?;
 
     info!(
         command = "run",
@@ -171,7 +214,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
         "starting run command"
     );
 
-    let transcription_config = build_transcription_config(args);
+    let run_config = build_run_config(args);
     let mut session = SessionManager::new(None);
     let mut client = BackendWebSocketClient::new(backend_url, token);
     let source_captures =
@@ -182,7 +225,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
     client.connect().await?;
 
     let start_message =
-        build_session_start_message(&mut session, &selected_devices, &transcription_config)?;
+        build_session_start_message(&mut session, &selected_devices, &run_config)?;
 
     info!(
         mic_device_id = %selected_devices.mic_device_id,
@@ -203,7 +246,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
     let result = async {
         client.send_message(&start_message).await?;
         let ready = client
-            .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+            .wait_for_session_ready(run_config.live.session_ready_timeout_seconds)
             .await?;
         session
             .handle_inbound_message(&ready)
@@ -217,7 +260,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
             source_captures,
             &selected_devices,
             &shutdown,
-            transcription_config,
+            run_config,
         )
         .await?;
 
@@ -266,13 +309,13 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
 pub fn build_session_start_message(
     session: &mut SessionManager,
     selected_devices: &SelectedDevices,
-    transcription_config: &TranscriptionConfig,
+    run_config: &RunConfig,
 ) -> Result<MessageEnvelope, ProtocolError> {
     let start_message = session.create_session_start(
         Some(selected_devices.mic_device_id.clone()),
         Some(selected_devices.system_device_id.clone()),
         transcription_backend_name().to_string(),
-        transcription_config.model_name().to_string(),
+        run_config.whisper.model_name().to_string(),
     )?;
     Ok(start_message)
 }
@@ -338,7 +381,7 @@ pub async fn run_live_session(
     source_captures: SourceCaptures,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
-    transcription_config: TranscriptionConfig,
+    run_config: RunConfig,
 ) -> Result<()> {
     run_live_session_with_adapter_factory(
         session,
@@ -346,7 +389,7 @@ pub async fn run_live_session(
         source_captures,
         selected_devices,
         shutdown,
-        transcription_config,
+        run_config,
         build_interruptible_transcription_adapter,
     )
     .await
@@ -358,13 +401,13 @@ pub async fn run_live_session_with_adapter_factory<F>(
     source_captures: SourceCaptures,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
-    transcription_config: TranscriptionConfig,
+    run_config: RunConfig,
     adapter_factory: F,
 ) -> Result<()>
 where
     F: Fn(
             Source,
-            &TranscriptionConfig,
+            &RunConfig,
             &ShutdownController,
         ) -> Result<WhisperCppAdapter, TranscriptionError>
         + Copy,
@@ -401,14 +444,15 @@ where
         ),
         (Source::System, Arc::clone(&system_worker), shared_session),
     ] {
-        let (source_runtime, inference_rx) = build_source_runtime(source, &capture).await?;
+        let (source_runtime, inference_rx) =
+            build_source_runtime(source, &capture, &run_config.live).await?;
         source_runtimes.insert(source, source_runtime);
         inference_tasks.push(tokio::spawn(inference_worker(
             source,
             TranscriptPipeline::new(
                 source,
                 session,
-                adapter_factory(source, &transcription_config, shutdown)?,
+                adapter_factory(source, &run_config, shutdown)?,
                 true,
             ),
             inference_rx,
@@ -446,7 +490,7 @@ where
                         client,
                         selected_devices,
                         shutdown,
-                        &transcription_config,
+                        &run_config,
                     )
                     .await?;
                     backend_tick.as_mut().reset(Instant::now() + BACKEND_POLL_INTERVAL);
@@ -475,7 +519,7 @@ where
                                 client,
                                 selected_devices,
                                 shutdown,
-                                &transcription_config,
+                                &run_config,
                             )
                             .await?;
                             if shutdown.is_requested() {
@@ -497,7 +541,7 @@ where
                         client,
                         selected_devices,
                         shutdown,
-                        &transcription_config,
+                        &run_config,
                         result,
                     )
                     .await?;
@@ -529,7 +573,7 @@ where
             client,
             selected_devices,
             shutdown,
-            &transcription_config,
+            &run_config,
             result,
         )
         .await?;
@@ -562,7 +606,7 @@ impl Drop for AbortLogSuppressionReset {
 }
 
 fn process_capture_chunk(source_runtime: &mut SourceRuntime, chunk: PcmChunk) -> Result<()> {
-    let vad_config = live_vad_config(source_runtime.source);
+    let vad_config = source_runtime.live_config.vad_config(source_runtime.source);
     let processed = source_runtime.preprocess.process_with_vad(&chunk, &vad_config)?;
 
     for output in processed.emitted_chunks {
@@ -618,16 +662,6 @@ fn flush_source_runtime(source_runtime: &mut SourceRuntime) -> Result<()> {
     )?;
 
     Ok(())
-}
-
-fn live_vad_config(source: Source) -> VadConfig {
-    VadConfig {
-        enabled: true,
-        min_rms: match source {
-            Source::Mic => LIVE_MIC_MIN_RMS,
-            Source::System => LIVE_SYSTEM_MIN_RMS,
-        },
-    }
 }
 
 async fn stop_workers(
@@ -754,7 +788,7 @@ async fn send_inference_result(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
-    transcription_config: &TranscriptionConfig,
+    run_config: &RunConfig,
     result: InferenceResult,
 ) -> Result<()> {
     for message in result.messages {
@@ -763,7 +797,7 @@ async fn send_inference_result(
             client,
             selected_devices,
             shutdown,
-            &transcription_config,
+            run_config,
             &message,
         )
         .await?;
@@ -801,7 +835,7 @@ async fn poll_backend_messages(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
-    transcription_config: &TranscriptionConfig,
+    run_config: &RunConfig,
 ) -> Result<()> {
     loop {
         let message = match timeout(BACKEND_MESSAGE_POLL_TIMEOUT, client.receive_message()).await {
@@ -813,7 +847,7 @@ async fn poll_backend_messages(
                     client,
                     selected_devices,
                     shutdown,
-                    transcription_config,
+                    run_config,
                 )
                 .await?;
                 return Ok(());
@@ -829,7 +863,7 @@ async fn poll_backend_messages(
                     client,
                     selected_devices,
                     shutdown,
-                    transcription_config,
+                    run_config,
                 )
                 .await?;
                 return Ok(());
@@ -867,7 +901,7 @@ async fn send_message_with_reconnect(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
-    transcription_config: &TranscriptionConfig,
+    run_config: &RunConfig,
     message: &MessageEnvelope,
 ) -> Result<()> {
     match client.send_message(message).await {
@@ -879,7 +913,7 @@ async fn send_message_with_reconnect(
                 client,
                 selected_devices,
                 shutdown,
-                transcription_config,
+                run_config,
             )
             .await
         }
@@ -892,7 +926,7 @@ async fn reconnect_backend_session(
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
     shutdown: &ShutdownController,
-    transcription_config: &TranscriptionConfig,
+    run_config: &RunConfig,
 ) -> Result<()> {
     let reconnect_deadline = Instant::now() + RECONNECT_WINDOW;
     let mut backoff = RECONNECT_INITIAL_BACKOFF;
@@ -908,7 +942,7 @@ async fn reconnect_backend_session(
             session,
             client,
             selected_devices,
-            transcription_config,
+            run_config,
         )
         .await
         {
@@ -941,16 +975,15 @@ async fn reconnect_backend_session_once(
     session: &mut SessionManager,
     client: &mut BackendWebSocketClient,
     selected_devices: &SelectedDevices,
-    transcription_config: &TranscriptionConfig,
+    run_config: &RunConfig,
 ) -> Result<()> {
     client.connect().await?;
     info!("backend reconnect succeeded; starting fresh session");
 
-    let start_message =
-        build_session_start_message(session, selected_devices, transcription_config)?;
+    let start_message = build_session_start_message(session, selected_devices, run_config)?;
     client.send_message(&start_message).await?;
     let ready = client
-        .wait_for_session_ready(DEFAULT_READY_TIMEOUT_SECONDS)
+        .wait_for_session_ready(run_config.live.session_ready_timeout_seconds)
         .await?;
     session
         .handle_inbound_message(&ready)
@@ -977,49 +1010,121 @@ fn is_reconnectable_reconnect_error(error: &anyhow::Error) -> bool {
         .is_some_and(is_reconnectable_websocket_error)
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct TranscriptionConfig {
-    pub whisper_model_name: Option<String>,
+#[derive(Debug, Clone, PartialEq)]
+pub struct LiveAudioConfig {
+    pub chunk_ms: u32,
+    pub silence_hold_ms: u64,
+    pub mic_min_rms: f32,
+    pub system_min_rms: f32,
+    pub session_ready_timeout_seconds: f64,
+}
+
+impl Default for LiveAudioConfig {
+    fn default() -> Self {
+        Self {
+            chunk_ms: DEFAULT_CHUNK_MS,
+            silence_hold_ms: DEFAULT_SILENCE_HOLD_MS,
+            mic_min_rms: DEFAULT_MIN_RMS,
+            system_min_rms: DEFAULT_MIN_RMS,
+            session_ready_timeout_seconds: DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
+        }
+    }
+}
+
+impl LiveAudioConfig {
+    fn vad_config(&self, source: Source) -> VadConfig {
+        VadConfig {
+            enabled: true,
+            min_rms: match source {
+                Source::Mic => self.mic_min_rms,
+                Source::System => self.system_min_rms,
+            },
+        }
+    }
+
+    fn preprocess_config(&self) -> PreprocessConfig {
+        PreprocessConfig {
+            chunk_duration_ms: self.chunk_ms,
+            ..PreprocessConfig::default()
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WhisperConfig {
+    pub whisper_model_name: String,
+    pub whisper_language: String,
+    pub whisper_use_context: bool,
     pub whisper_use_gpu: bool,
     pub whisper_flash_attn: bool,
     pub whisper_gpu_device: i32,
 }
 
-impl TranscriptionConfig {
-    pub fn model_name(&self) -> &str {
-        self.whisper_model_name.as_deref().unwrap_or("large")
+impl Default for WhisperConfig {
+    fn default() -> Self {
+        Self {
+            whisper_model_name: "large".to_string(),
+            whisper_language: "en".to_string(),
+            whisper_use_context: true,
+            whisper_use_gpu: cfg!(feature = "whisper-gpu"),
+            whisper_flash_attn: false,
+            whisper_gpu_device: 0,
+        }
     }
 }
 
-pub fn build_transcription_config(args: &RunArgs) -> TranscriptionConfig {
-    TranscriptionConfig {
-        whisper_model_name: args.whisper_model_name.clone(),
-        whisper_use_gpu: args.whisper_use_gpu,
-        whisper_flash_attn: args.whisper_flash_attn,
-        whisper_gpu_device: args.whisper_gpu_device,
+impl WhisperConfig {
+    pub fn model_name(&self) -> &str {
+        &self.whisper_model_name
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RunConfig {
+    pub live: LiveAudioConfig,
+    pub whisper: WhisperConfig,
+}
+
+pub fn build_run_config(args: &RunArgs) -> RunConfig {
+    RunConfig {
+        live: LiveAudioConfig {
+            chunk_ms: args.chunk_ms,
+            silence_hold_ms: args.silence_hold_ms,
+            mic_min_rms: args.mic_min_rms,
+            system_min_rms: args.system_min_rms,
+            session_ready_timeout_seconds: args.session_ready_timeout_seconds,
+        },
+        whisper: WhisperConfig {
+            whisper_model_name: args.whisper_model_name.clone(),
+            whisper_language: args.whisper_language.clone(),
+            whisper_use_context: args.whisper_use_context,
+            whisper_use_gpu: args.whisper_use_gpu,
+            whisper_flash_attn: args.whisper_flash_attn,
+            whisper_gpu_device: args.whisper_gpu_device,
+        },
     }
 }
 
 fn build_interruptible_transcription_adapter(
     source: Source,
-    config_args: &TranscriptionConfig,
+    run_config: &RunConfig,
     shutdown: &ShutdownController,
 ) -> Result<WhisperCppAdapter, TranscriptionError> {
     let mut config = WhisperCppConfig {
-        language: None,
+        language: Some(run_config.whisper.whisper_language.clone()),
+        use_context: run_config.whisper.whisper_use_context,
         ..WhisperCppConfig::default()
     };
-    if let Some(model_name) = &config_args.whisper_model_name {
-        config.model_name = model_name.clone();
-    }
-    config.use_gpu = config_args.whisper_use_gpu;
-    config.flash_attn = config_args.whisper_flash_attn;
-    config.gpu_device = config_args.whisper_gpu_device;
+    config.model_name = run_config.whisper.whisper_model_name.clone();
+    config.use_gpu = run_config.whisper.whisper_use_gpu;
+    config.flash_attn = run_config.whisper.whisper_flash_attn;
+    config.gpu_device = run_config.whisper.whisper_gpu_device;
 
     info!(
         source = ?source,
         model_name = %config.model_name,
         language = ?config.language,
+        use_context = config.use_context,
         use_gpu = config.use_gpu,
         flash_attn = config.flash_attn,
         gpu_device = config.gpu_device,
@@ -1036,16 +1141,10 @@ fn build_interruptible_transcription_adapter(
     }
 }
 
-fn transcription_preprocess_config(_source: Source) -> PreprocessConfig {
-    PreprocessConfig {
-        chunk_duration_ms: TRANSCRIPTION_CHUNK_MS,
-        ..PreprocessConfig::default()
-    }
-}
-
 async fn build_source_runtime(
     source: Source,
     capture: &Arc<tokio::sync::Mutex<AudioCaptureWorker>>,
+    live_config: &LiveAudioConfig,
 ) -> Result<(SourceRuntime, mpsc::Receiver<InferenceRequest>)> {
     let (inference_tx, inference_rx) = mpsc::channel(INFERENCE_REQUEST_CHANNEL_CAPACITY);
     let (capture_source, device_id) = {
@@ -1059,10 +1158,11 @@ async fn build_source_runtime(
             preprocess: PreprocessState::new(
                 capture_source,
                 device_id,
-                transcription_preprocess_config(source),
+                live_config.preprocess_config(),
             ),
             inference_tx,
-            silence_tracker: SilenceTracker::new(LIVE_SILENCE_HOLD_MS),
+            silence_tracker: SilenceTracker::new(live_config.silence_hold_ms),
+            live_config: live_config.clone(),
         },
         inference_rx,
     ))

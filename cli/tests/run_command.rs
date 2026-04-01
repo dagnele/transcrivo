@@ -1,7 +1,7 @@
 use transcrivo_cli_rs::commands::models::validate_model_name;
 use transcrivo_cli_rs::commands::run::{
-    build_session_start_message, build_transcription_config, describe_selected_devices,
-    validate_backend_url, validate_required_text, RunArgs, SelectedDevices,
+    build_run_config, build_session_start_message, describe_selected_devices, validate_backend_url,
+    validate_required_text, RunArgs, SelectedDevices,
 };
 use transcrivo_cli_rs::session::manager::SessionManager;
 use transcrivo_cli_rs::session::models::Source;
@@ -65,12 +65,19 @@ fn whisper_model_name_rejects_unknown_values() {
 fn build_session_start_message_includes_selected_device_ids() {
     let mut session = SessionManager::new(Some("linux".to_string()));
     let selected_devices = selected_devices("Headset Mic", "Monitor");
-    let config = build_transcription_config(&RunArgs {
+    let config = build_run_config(&RunArgs {
         backend_url: "ws://localhost:8080/ws".to_string(),
-        token: Some("token".to_string()),
+        token: "token".to_string(),
         mic_device: None,
         system_device: None,
-        whisper_model_name: None,
+        whisper_model_name: "large".to_string(),
+        chunk_ms: 5_000,
+        silence_hold_ms: 1_000,
+        mic_min_rms: 0.005,
+        system_min_rms: 0.005,
+        session_ready_timeout_seconds: 5.0,
+        whisper_language: "en".to_string(),
+        whisper_use_context: true,
         whisper_use_gpu: false,
         whisper_flash_attn: false,
         whisper_gpu_device: 0,
@@ -99,44 +106,72 @@ fn describe_selected_devices_includes_names_and_ids() {
 }
 
 #[test]
-fn build_transcription_config_preserves_gpu_options() {
+fn build_run_config_preserves_runtime_and_whisper_options() {
     let args = RunArgs {
         backend_url: "ws://localhost:8080/ws".to_string(),
-        token: Some("token".to_string()),
+        token: "token".to_string(),
         mic_device: None,
         system_device: None,
-        whisper_model_name: Some("base.en".to_string()),
+        whisper_model_name: "base.en".to_string(),
+        chunk_ms: 2_500,
+        silence_hold_ms: 750,
+        mic_min_rms: 0.01,
+        system_min_rms: 0.02,
+        session_ready_timeout_seconds: 12.5,
+        whisper_language: "it".to_string(),
+        whisper_use_context: true,
         whisper_use_gpu: true,
         whisper_flash_attn: true,
         whisper_gpu_device: 2,
     };
 
-    let config = build_transcription_config(&args);
+    let config = build_run_config(&args);
 
-    assert_eq!(config.whisper_model_name.as_deref(), Some("base.en"));
-    assert!(config.whisper_use_gpu);
-    assert!(config.whisper_flash_attn);
-    assert_eq!(config.whisper_gpu_device, 2);
+    assert_eq!(config.live.chunk_ms, 2_500);
+    assert_eq!(config.live.silence_hold_ms, 750);
+    assert_eq!(config.live.mic_min_rms, 0.01);
+    assert_eq!(config.live.system_min_rms, 0.02);
+    assert_eq!(config.live.session_ready_timeout_seconds, 12.5);
+    assert_eq!(config.whisper.whisper_model_name, "base.en");
+    assert_eq!(config.whisper.whisper_language, "it");
+    assert!(config.whisper.whisper_use_context);
+    assert!(config.whisper.whisper_use_gpu);
+    assert!(config.whisper.whisper_flash_attn);
+    assert_eq!(config.whisper.whisper_gpu_device, 2);
 }
 
 #[test]
-fn build_transcription_config_defaults_are_source_agnostic() {
+fn build_run_config_defaults_are_source_agnostic() {
     let args = RunArgs {
         backend_url: "ws://localhost:8080/ws".to_string(),
-        token: Some("token".to_string()),
+        token: "token".to_string(),
         mic_device: None,
         system_device: None,
-        whisper_model_name: None,
+        whisper_model_name: "large".to_string(),
+        chunk_ms: 5_000,
+        silence_hold_ms: 1_000,
+        mic_min_rms: 0.005,
+        system_min_rms: 0.005,
+        session_ready_timeout_seconds: 5.0,
+        whisper_language: "en".to_string(),
+        whisper_use_context: true,
         whisper_use_gpu: false,
         whisper_flash_attn: false,
         whisper_gpu_device: 0,
     };
 
-    let config = build_transcription_config(&args);
+    let config = build_run_config(&args);
 
-    assert_eq!(config.whisper_model_name, None);
-    assert!(!config.whisper_use_gpu);
-    assert!(!config.whisper_flash_attn);
-    assert_eq!(config.whisper_gpu_device, 0);
+    assert_eq!(config.live.chunk_ms, 5_000);
+    assert_eq!(config.live.silence_hold_ms, 1_000);
+    assert_eq!(config.live.mic_min_rms, 0.005);
+    assert_eq!(config.live.system_min_rms, 0.005);
+    assert_eq!(config.live.session_ready_timeout_seconds, 5.0);
+    assert_eq!(config.whisper.whisper_model_name, "large");
+    assert_eq!(config.whisper.whisper_language, "en");
+    assert!(config.whisper.whisper_use_context);
+    assert!(!config.whisper.whisper_use_gpu);
+    assert!(!config.whisper.whisper_flash_attn);
+    assert_eq!(config.whisper.whisper_gpu_device, 0);
     assert_ne!(Source::Mic, Source::System);
 }
