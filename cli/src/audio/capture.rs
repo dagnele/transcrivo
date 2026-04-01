@@ -1,8 +1,5 @@
 use std::collections::HashMap;
 
-use tokio::io::AsyncReadExt;
-use tokio::process::{Child, ChildStdout, Command};
-
 use thiserror::Error;
 
 #[cfg(target_os = "linux")]
@@ -36,8 +33,8 @@ impl CaptureConfig {
             source,
             device_id: device_id.into(),
             device_name: device_name.into(),
-            sample_rate: 48_000,
-            channels: 2,
+            sample_rate: 16_000,
+            channels: 1,
             frames_per_chunk: 2_048,
         }
     }
@@ -57,32 +54,8 @@ pub struct PcmChunk {
     pub pcm: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
-pub struct PcmFrame {
-    pub sample_rate_hz: u32,
-    pub channels: u16,
-    pub samples: Vec<f32>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProcessCaptureSpec {
-    pub program: String,
-    pub args: Vec<String>,
-}
-
-impl ProcessCaptureSpec {
-    pub fn new(program: impl Into<String>, args: Vec<String>) -> Self {
-        Self {
-            program: program.into(),
-            args,
-        }
-    }
-}
-
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum CaptureError {
-    #[error("capture backend is not implemented yet")]
-    NotImplemented,
     #[error("capture worker is already running")]
     AlreadyRunning,
     #[error("capture worker is not running")]
@@ -91,18 +64,14 @@ pub enum CaptureError {
     NoChannels,
     #[error("captured audio reported {actual} channels, expected {expected}")]
     ChannelMismatch { expected: u16, actual: usize },
-    #[error("failed to spawn capture process: {0}")]
+    #[error("failed to initialize capture backend: {0}")]
     SpawnFailed(String),
-    #[error("capture process did not expose stdout")]
-    MissingStdout,
     #[error("failed to read capture chunk: {0}")]
     ReadFailed(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CaptureBackendSpec {
-    Placeholder,
-    Process(ProcessCaptureSpec),
     #[cfg(target_os = "linux")]
     NativeLinuxPipeWire(NativeLinuxCaptureSpec),
     #[cfg(target_os = "windows")]
@@ -110,38 +79,7 @@ enum CaptureBackendSpec {
 }
 
 #[derive(Debug)]
-struct ProcessCaptureRuntime {
-    child: Child,
-    stdout: ChildStdout,
-}
-
-impl ProcessCaptureRuntime {
-    async fn read_chunk(&mut self, config: &CaptureConfig) -> Result<PcmChunk, CaptureError> {
-        let mut pcm = vec![0_u8; config.bytes_per_chunk()];
-        self.stdout
-            .read_exact(&mut pcm)
-            .await
-            .map_err(|error| CaptureError::ReadFailed(error.to_string()))?;
-
-        Ok(PcmChunk {
-            source: config.source,
-            device_id: config.device_id.clone(),
-            sample_rate: config.sample_rate,
-            channels: config.channels,
-            frame_count: config.frames_per_chunk,
-            pcm,
-        })
-    }
-
-    async fn stop(&mut self) {
-        let _ = self.child.start_kill();
-        let _ = self.child.wait().await;
-    }
-}
-
-#[derive(Debug)]
 enum CaptureRuntime {
-    Process(ProcessCaptureRuntime),
     #[cfg(target_os = "linux")]
     NativeLinuxPipeWire(NativeLinuxPipeWireRuntime),
     #[cfg(target_os = "windows")]
@@ -156,22 +94,6 @@ pub struct AudioCaptureWorker {
 }
 
 impl AudioCaptureWorker {
-    pub fn placeholder(config: CaptureConfig) -> Self {
-        Self {
-            config,
-            backend: CaptureBackendSpec::Placeholder,
-            running: None,
-        }
-    }
-
-    pub fn process(config: CaptureConfig, spec: ProcessCaptureSpec) -> Self {
-        Self {
-            config,
-            backend: CaptureBackendSpec::Process(spec),
-            running: None,
-        }
-    }
-
     #[cfg(target_os = "linux")]
     pub fn native_linux_pipewire(config: CaptureConfig, spec: NativeLinuxCaptureSpec) -> Self {
         Self {
@@ -190,40 +112,12 @@ impl AudioCaptureWorker {
         }
     }
 
-    pub fn process_spec(&self) -> Option<&ProcessCaptureSpec> {
-        match &self.backend {
-            CaptureBackendSpec::Placeholder => None,
-            CaptureBackendSpec::Process(spec) => Some(spec),
-            #[cfg(target_os = "linux")]
-            CaptureBackendSpec::NativeLinuxPipeWire(_) => None,
-            #[cfg(target_os = "windows")]
-            CaptureBackendSpec::NativeWindowsWasapi(_) => None,
-        }
-    }
-
     pub async fn start(&mut self) -> Result<(), CaptureError> {
         if self.running.is_some() {
             return Err(CaptureError::AlreadyRunning);
         }
 
         match &self.backend {
-            CaptureBackendSpec::Placeholder => Err(CaptureError::NotImplemented),
-            CaptureBackendSpec::Process(spec) => {
-                let mut command = Command::new(&spec.program);
-                command.args(&spec.args);
-                command.stdout(std::process::Stdio::piped());
-                command.stderr(std::process::Stdio::null());
-
-                let mut child = command
-                    .spawn()
-                    .map_err(|error| CaptureError::SpawnFailed(error.to_string()))?;
-                let stdout = child.stdout.take().ok_or(CaptureError::MissingStdout)?;
-                self.running = Some(CaptureRuntime::Process(ProcessCaptureRuntime {
-                    child,
-                    stdout,
-                }));
-                Ok(())
-            }
             #[cfg(target_os = "linux")]
             CaptureBackendSpec::NativeLinuxPipeWire(spec) => {
                 let runtime = NativeLinuxPipeWireRuntime::start(spec, &self.config)?;
@@ -241,7 +135,6 @@ impl AudioCaptureWorker {
 
     pub async fn read_chunk(&mut self) -> Result<PcmChunk, CaptureError> {
         match self.running.as_mut() {
-            Some(CaptureRuntime::Process(runtime)) => runtime.read_chunk(&self.config).await,
             #[cfg(target_os = "linux")]
             Some(CaptureRuntime::NativeLinuxPipeWire(runtime)) => {
                 runtime.read_chunk(&self.config).await
@@ -260,7 +153,6 @@ impl AudioCaptureWorker {
         };
 
         match &mut running {
-            CaptureRuntime::Process(runtime) => runtime.stop().await,
             #[cfg(target_os = "linux")]
             CaptureRuntime::NativeLinuxPipeWire(runtime) => runtime.stop().await,
             #[cfg(target_os = "windows")]

@@ -94,46 +94,6 @@ pub trait WhisperBackend: Send + Sync {
 
 pub const TRANSCRIPTION_BACKEND_WHISPER_RS: &str = "whisper-rs";
 
-#[derive(Debug, Default)]
-pub struct DebugWhisperBackend;
-
-impl WhisperBackend for DebugWhisperBackend {
-    fn transcribe(
-        &self,
-        chunk: &AudioChunk,
-        _config: &WhisperCppConfig,
-    ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
-        if chunk.samples.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let source = match chunk.source {
-            crate::audio::capture::CaptureSource::Mic => "mic",
-            crate::audio::capture::CaptureSource::System => "system",
-        };
-
-        Ok(vec![TranscriptSegment {
-            text: format!("debug {source} audio"),
-            start_ms: chunk.start_ms,
-            end_ms: chunk.end_ms,
-            is_partial: false,
-        }])
-    }
-}
-
-#[derive(Debug, Default)]
-struct UnconfiguredBackend;
-
-impl WhisperBackend for UnconfiguredBackend {
-    fn transcribe(
-        &self,
-        _chunk: &AudioChunk,
-        _config: &WhisperCppConfig,
-    ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
-        Err(TranscriptionError::NotConfigured)
-    }
-}
-
 #[derive(Debug)]
 pub struct RealWhisperBackend {
     state: Mutex<RealWhisperState>,
@@ -303,49 +263,12 @@ impl WhisperCppAdapter {
         Self { config, backend }
     }
 
-    pub fn unconfigured() -> Self {
-        Self {
-            config: WhisperCppConfig::default(),
-            backend: Arc::new(UnconfiguredBackend),
-        }
-    }
-
-    pub fn debug() -> Self {
-        Self {
-            config: WhisperCppConfig {
-                language: Some("en".to_string()),
-                ..WhisperCppConfig::default()
-            },
-            backend: Arc::new(DebugWhisperBackend),
-        }
-    }
-
-    pub fn real(config: WhisperCppConfig) -> Result<Self, TranscriptionError> {
-        let backend = Arc::new(RealWhisperBackend::from_config(&config)?);
-        Ok(Self { config, backend })
-    }
-
     pub fn real_at_path<P: AsRef<Path>>(
         config: WhisperCppConfig,
         model_path: P,
     ) -> Result<Self, TranscriptionError> {
         let backend = Arc::new(RealWhisperBackend::new(model_path, &config)?);
         Ok(Self { config, backend })
-    }
-
-    pub fn transcribe_chunk(
-        &self,
-        chunk: &AudioChunk,
-    ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
-        Self::validate_chunk(chunk)?;
-
-        let segments = self.backend.transcribe(chunk, &self.config)?;
-        let mut output = Vec::new();
-        for segment in segments {
-            segment.validate()?;
-            output.push(segment);
-        }
-        Ok(output)
     }
 
     /// Async variant that runs the blocking whisper inference on a dedicated

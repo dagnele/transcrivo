@@ -10,6 +10,13 @@ use transcrivo_cli_rs::transcribe::whisper_cpp::{
 };
 use transcrivo_cli_rs::transport::protocol::MessageType;
 
+async fn pipeline_transcribe_chunk(
+    pipeline: &mut TranscriptPipeline,
+    chunk: &AudioChunk,
+) -> Result<Vec<transcrivo_cli_rs::transport::protocol::MessageEnvelope>, TranscriptionError> {
+    pipeline.transcribe_chunk_async(chunk).await
+}
+
 const WHISPER_SMOKE_MODEL_PATH_ENV: &str = "TRANSCRIVO_WHISPER_SMOKE_MODEL_PATH";
 
 #[derive(Debug)]
@@ -37,6 +44,19 @@ impl WhisperBackend for FakeBackendHandle {
         } else {
             backend.responses.remove(0)
         })
+    }
+}
+
+#[derive(Debug, Default)]
+struct UnconfiguredTestBackend;
+
+impl WhisperBackend for UnconfiguredTestBackend {
+    fn transcribe(
+        &self,
+        _chunk: &AudioChunk,
+        _config: &WhisperCppConfig,
+    ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
+        Err(TranscriptionError::NotConfigured)
     }
 }
 
@@ -93,18 +113,26 @@ fn build_adapter(responses: Vec<Vec<TranscriptSegment>>) -> WhisperCppAdapter {
     )
 }
 
-#[test]
-fn adapter_reports_unconfigured_backend() {
-    let adapter = WhisperCppAdapter::unconfigured();
+fn build_unconfigured_adapter() -> WhisperCppAdapter {
+    WhisperCppAdapter::new(
+        WhisperCppConfig::default(),
+        Box::new(UnconfiguredTestBackend),
+    )
+}
+
+#[tokio::test]
+async fn adapter_reports_unconfigured_backend() {
+    let adapter = build_unconfigured_adapter();
     let error = adapter
-        .transcribe_chunk(&build_chunk(CaptureSource::Mic, 0, 1000))
+        .transcribe_chunk_async(&build_chunk(CaptureSource::Mic, 0, 1000))
+        .await
         .expect_err("unconfigured adapter should fail");
 
     assert_eq!(error.to_string(), "whisper.cpp adapter is not configured");
 }
 
-#[test]
-fn pipeline_emits_final_messages() {
+#[tokio::test]
+async fn pipeline_emits_final_messages() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: "answer".to_string(),
@@ -114,8 +142,8 @@ fn pipeline_emits_final_messages() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, false);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::Mic, 0, 1000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::Mic, 0, 1000))
+        .await
         .expect("pipeline should transcribe");
 
     assert_eq!(messages.len(), 1);
@@ -124,8 +152,8 @@ fn pipeline_emits_final_messages() {
     assert_eq!(messages[0].payload["text"], "answer");
 }
 
-#[test]
-fn pipeline_drops_partials_by_default() {
+#[tokio::test]
+async fn pipeline_drops_partials_by_default() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: "draft".to_string(),
@@ -135,15 +163,15 @@ fn pipeline_drops_partials_by_default() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, false);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 1000, 2000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 1000, 2000))
+        .await
         .expect("pipeline should transcribe");
 
     assert!(messages.is_empty());
 }
 
-#[test]
-fn pipeline_can_emit_partials_when_enabled() {
+#[tokio::test]
+async fn pipeline_can_emit_partials_when_enabled() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: "draft".to_string(),
@@ -153,8 +181,8 @@ fn pipeline_can_emit_partials_when_enabled() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 1000, 2000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 1000, 2000))
+        .await
         .expect("pipeline should transcribe");
 
     assert_eq!(messages.len(), 1);
@@ -162,8 +190,8 @@ fn pipeline_can_emit_partials_when_enabled() {
     assert_eq!(messages[0].payload["source"], "system");
 }
 
-#[test]
-fn pipeline_flush_pending_finalizes_last_partial() {
+#[tokio::test]
+async fn pipeline_flush_pending_finalizes_last_partial() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: "closing thought".to_string(),
@@ -173,8 +201,8 @@ fn pipeline_flush_pending_finalizes_last_partial() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let partial_messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 1000))
+    let partial_messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 0, 1000))
+        .await
         .expect("partial should emit");
     let final_messages = pipeline.flush_pending().expect("flush should work");
 
@@ -192,21 +220,21 @@ fn pipeline_flush_pending_finalizes_last_partial() {
     );
 }
 
-#[test]
-fn pipeline_rejects_source_mismatch() {
+#[tokio::test]
+async fn pipeline_rejects_source_mismatch() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let adapter = build_adapter(vec![Vec::new()]);
     let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, false);
 
-    let error = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 1000))
+    let error = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 0, 1000))
+        .await
         .expect_err("source mismatch should fail");
 
     assert!(error.to_string().contains("cannot process chunk"));
 }
 
-#[test]
-fn pipeline_drops_blank_audio_segments() {
+#[tokio::test]
+async fn pipeline_drops_blank_audio_segments() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let adapter = build_adapter(vec![vec![TranscriptSegment {
         text: "[BLANK_AUDIO]".to_string(),
@@ -216,16 +244,16 @@ fn pipeline_drops_blank_audio_segments() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::Mic, session, adapter, true);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::Mic, 0, 1000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::Mic, 0, 1000))
+        .await
         .expect("blank audio should be ignored");
 
     assert!(messages.is_empty());
     assert!(!pipeline.has_pending());
 }
 
-#[test]
-fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
+#[tokio::test]
+async fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
     let adapter = build_adapter(vec![vec![TranscriptSegment {
@@ -236,8 +264,8 @@ fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 0, 3000))
+        .await
         .expect("pipeline should transcribe");
 
     assert_eq!(messages.len(), 2);
@@ -253,8 +281,8 @@ fn pipeline_forces_cutoff_and_marks_mid_thought_continuation() {
         .starts_with("..."));
 }
 
-#[test]
-fn pipeline_flushes_remainder_after_forced_cutoff() {
+#[tokio::test]
+async fn pipeline_flushes_remainder_after_forced_cutoff() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let sentence = "This is a deliberately long sentence that should be emitted as a final chunk when it reaches the cutoff because it ends with a period and keeps going long enough to consume most of the allowed pending utterance budget before we hand off to the continuation.";
     let continuation = "This continuation should remain pending for the next partial update so the user still sees the next phrase taking shape in real time while the pipeline preserves a clean boundary between the finalized sentence and the remaining live text.";
@@ -266,8 +294,8 @@ fn pipeline_flushes_remainder_after_forced_cutoff() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 0, 3000))
+        .await
         .expect("pipeline should transcribe");
     let flushed = pipeline.flush_pending().expect("flush should work");
 
@@ -279,8 +307,8 @@ fn pipeline_flushes_remainder_after_forced_cutoff() {
     assert_eq!(flushed[0].payload["text"], continuation);
 }
 
-#[test]
-fn pipeline_rotates_utterance_id_after_forced_cutoff_flush() {
+#[tokio::test]
+async fn pipeline_rotates_utterance_id_after_forced_cutoff_flush() {
     let session = Arc::new(SessionManager::new(Some("linux".to_string())));
     let text = "this transcript keeps running without any sentence marker so the pipeline needs to force a cutoff at a word boundary and keep the rest moving forward as a continued thought for the next partial update while more audio is still coming through the system and then it keeps elaborating on the same idea with extra detail so the cutoff logic has to split it before the utterance grows too large for one live item";
     let adapter = build_adapter(vec![vec![TranscriptSegment {
@@ -291,8 +319,8 @@ fn pipeline_rotates_utterance_id_after_forced_cutoff_flush() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let messages = pipeline
-        .transcribe_chunk(&build_chunk(CaptureSource::System, 0, 3000))
+    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(CaptureSource::System, 0, 3000))
+        .await
         .expect("pipeline should transcribe");
     let flushed = pipeline.flush_pending().expect("flush should work");
 
@@ -322,8 +350,9 @@ fn real_whisper_backend_smoke_test() {
     )
     .expect("real adapter should initialize from model path");
 
-    let segments = adapter
-        .transcribe_chunk(&build_smoke_chunk(CaptureSource::Mic))
+    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let segments = runtime
+        .block_on(adapter.transcribe_chunk_async(&build_smoke_chunk(CaptureSource::Mic)))
         .expect("real backend should complete inference");
 
     for segment in &segments {

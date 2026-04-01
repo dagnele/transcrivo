@@ -1,6 +1,3 @@
-use transcrivo_cli_rs::audio::capture::{
-    AudioCaptureWorker, CaptureConfig, CaptureSource, SourceCaptures,
-};
 use transcrivo_cli_rs::commands::models::validate_model_name;
 use transcrivo_cli_rs::commands::run::{
     build_session_start_message, build_transcription_config, describe_selected_devices,
@@ -8,6 +5,15 @@ use transcrivo_cli_rs::commands::run::{
 };
 use transcrivo_cli_rs::session::manager::SessionManager;
 use transcrivo_cli_rs::session::models::Source;
+
+fn selected_devices(mic_name: &str, system_name: &str) -> SelectedDevices {
+    SelectedDevices {
+        mic_device_id: "mic-1".to_string(),
+        mic_device_name: mic_name.to_string(),
+        system_device_id: "sys-1".to_string(),
+        system_device_name: system_name.to_string(),
+    }
+}
 
 #[test]
 fn backend_url_accepts_websocket_urls() {
@@ -58,20 +64,7 @@ fn whisper_model_name_rejects_unknown_values() {
 #[test]
 fn build_session_start_message_includes_selected_device_ids() {
     let mut session = SessionManager::new(Some("linux".to_string()));
-    let captures = SourceCaptures::new(
-        AudioCaptureWorker::placeholder(CaptureConfig::new(
-            CaptureSource::Mic,
-            "mic-1",
-            "Headset Mic",
-        )),
-        AudioCaptureWorker::placeholder(CaptureConfig::new(
-            CaptureSource::System,
-            "sys-1",
-            "Monitor",
-        )),
-    );
-    let selected_devices =
-        SelectedDevices::from_source_captures(&captures).expect("selected devices should build");
+    let selected_devices = selected_devices("Headset Mic", "Monitor");
     let config = build_transcription_config(&RunArgs {
         backend_url: "ws://localhost:8080/ws".to_string(),
         token: Some("token".to_string()),
@@ -95,20 +88,7 @@ fn build_session_start_message_includes_selected_device_ids() {
 
 #[test]
 fn describe_selected_devices_includes_names_and_ids() {
-    let captures = SourceCaptures::new(
-        AudioCaptureWorker::placeholder(CaptureConfig::new(
-            CaptureSource::Mic,
-            "mic-1",
-            "Headset Mic",
-        )),
-        AudioCaptureWorker::placeholder(CaptureConfig::new(
-            CaptureSource::System,
-            "sys-1",
-            "Speaker Monitor",
-        )),
-    );
-    let selected_devices =
-        SelectedDevices::from_source_captures(&captures).expect("selected devices should build");
+    let selected_devices = selected_devices("Headset Mic", "Speaker Monitor");
 
     let description = describe_selected_devices(&selected_devices);
 

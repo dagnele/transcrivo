@@ -53,14 +53,6 @@ impl TranscriptPipeline {
         }
     }
 
-    pub fn transcribe_chunk(
-        &mut self,
-        chunk: &AudioChunk,
-    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
-        let segments = self.run_adapter(chunk)?;
-        self.process_segments(&segments)
-    }
-
     /// Async variant that runs the blocking whisper inference off the tokio
     /// runtime via `spawn_blocking`, preventing the event loop from stalling.
     pub async fn transcribe_chunk_async(
@@ -69,33 +61,6 @@ impl TranscriptPipeline {
     ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let segments = self.run_adapter_async(chunk).await?;
         self.process_segments(&segments)
-    }
-
-    fn run_adapter(
-        &self,
-        chunk: &AudioChunk,
-    ) -> Result<Vec<crate::transcribe::whisper_cpp::TranscriptSegment>, TranscriptionError> {
-        if Source::from(chunk.source) != self.source {
-            return Err(TranscriptionError::InvalidChunk(format!(
-                "Transcription pipeline for {:?} cannot process chunk from {:?}",
-                self.source, chunk.source
-            )));
-        }
-
-        self.adapter.transcribe_chunk(chunk).map_err(|error| {
-            if matches!(error, TranscriptionError::Aborted) {
-                return error;
-            }
-            error!(
-                source = ?chunk.source,
-                device_id = %chunk.device_id,
-                start_ms = chunk.start_ms,
-                end_ms = chunk.end_ms,
-                error = %error,
-                "transcription failed"
-            );
-            error
-        })
     }
 
     async fn run_adapter_async(
