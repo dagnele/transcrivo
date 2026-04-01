@@ -8,11 +8,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::audio::capture::{AudioCaptureWorker, CaptureSource, PcmChunk, SourceCaptures};
 use crate::audio::open_default_source_captures;
-use crate::audio::preprocess::{
-    downmix_to_mono, frames_to_ms, pcm16le_to_f32, resample_audio, AudioChunk,
-    PreprocessConfig, PreprocessState,
-};
-use crate::audio::vad::{should_keep_chunk, VadConfig};
+use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
+use crate::audio::vad::VadConfig;
 use crate::commands::models::{ensure_model_downloaded, validate_model_name};
 use crate::session::manager::SessionManager;
 use crate::session::models::Source;
@@ -404,24 +401,8 @@ where
         ),
         (Source::System, Arc::clone(&system_worker), shared_session),
     ] {
-        let (inference_tx, inference_rx) = mpsc::channel(INFERENCE_REQUEST_CHANNEL_CAPACITY);
-        let (capture_source, device_id) = {
-            let capture = capture.lock().await;
-            (capture.config.source, capture.config.device_id.clone())
-        };
-        source_runtimes.insert(
-            source,
-            SourceRuntime {
-                source,
-                preprocess: PreprocessState::new(
-                    capture_source,
-                    device_id,
-                    transcription_preprocess_config(source),
-                ),
-                inference_tx,
-                silence_tracker: SilenceTracker::new(LIVE_SILENCE_HOLD_MS),
-            },
-        );
+        let (source_runtime, inference_rx) = build_source_runtime(source, &capture).await?;
+        source_runtimes.insert(source, source_runtime);
         inference_tasks.push(tokio::spawn(inference_worker(
             source,
             TranscriptPipeline::new(
@@ -580,29 +561,11 @@ impl Drop for AbortLogSuppressionReset {
     }
 }
 
-pub async fn process_transcription_outputs(
-    client: &mut BackendWebSocketClient,
-    pipeline: &mut TranscriptPipeline,
-    outputs: &[AudioChunk],
-) -> Result<usize> {
-    let mut sent_messages = 0;
-    for output in outputs {
-        let messages = pipeline.transcribe_chunk_async(output).await?;
-        for message in messages {
-            client.send_message(&message).await?;
-            sent_messages += 1;
-        }
-    }
-    Ok(sent_messages)
-}
-
 fn process_capture_chunk(source_runtime: &mut SourceRuntime, chunk: PcmChunk) -> Result<()> {
-    let preview = preview_audio_chunk(&source_runtime.preprocess, &chunk)?;
     let vad_config = live_vad_config(source_runtime.source);
-    let is_speech = should_keep_chunk(&preview.samples, &vad_config);
-    let chunk_duration_ms = preview.end_ms.saturating_sub(preview.start_ms);
+    let processed = source_runtime.preprocess.process_with_vad(&chunk, &vad_config)?;
 
-    for output in source_runtime.preprocess.process(&chunk)? {
+    for output in processed.emitted_chunks {
         let start_ms = output.start_ms;
         let end_ms = output.end_ms;
         enqueue_inference_request(
@@ -614,16 +577,19 @@ fn process_capture_chunk(source_runtime: &mut SourceRuntime, chunk: PcmChunk) ->
         )?;
     }
 
-    if source_runtime.silence_tracker.observe(is_speech, chunk_duration_ms) {
+    if source_runtime
+        .silence_tracker
+        .observe(processed.is_speech, processed.chunk_duration_ms)
+    {
         enqueue_inference_request(
             &source_runtime.inference_tx,
             InferenceRequest::Finalize,
             source_runtime.source,
-            preview.start_ms,
-            preview.end_ms,
+            0,
+            processed.chunk_duration_ms,
         )?;
         source_runtime.silence_tracker.reset();
-    } else if is_speech {
+    } else if processed.is_speech {
         source_runtime.silence_tracker.reset();
     }
 
@@ -652,24 +618,6 @@ fn flush_source_runtime(source_runtime: &mut SourceRuntime) -> Result<()> {
     )?;
 
     Ok(())
-}
-
-fn preview_audio_chunk(preprocess: &PreprocessState, chunk: &PcmChunk) -> Result<AudioChunk> {
-    let frames = pcm16le_to_f32(&chunk.pcm, chunk.channels)?;
-    let mono = downmix_to_mono(&frames);
-    let samples = resample_audio(&mono, chunk.sample_rate, preprocess.config.target_sample_rate)?;
-    let duration_ms = frames_to_ms(samples.len(), preprocess.config.target_sample_rate)?;
-
-    Ok(AudioChunk {
-        source: chunk.source,
-        device_id: chunk.device_id.clone(),
-        sample_rate: preprocess.config.target_sample_rate,
-        channels: preprocess.config.target_channels,
-        start_ms: 0,
-        end_ms: duration_ms,
-        frame_count: samples.len(),
-        samples,
-    })
 }
 
 fn live_vad_config(source: Source) -> VadConfig {
@@ -1095,6 +1043,31 @@ fn transcription_preprocess_config(_source: Source) -> PreprocessConfig {
     }
 }
 
+async fn build_source_runtime(
+    source: Source,
+    capture: &Arc<tokio::sync::Mutex<AudioCaptureWorker>>,
+) -> Result<(SourceRuntime, mpsc::Receiver<InferenceRequest>)> {
+    let (inference_tx, inference_rx) = mpsc::channel(INFERENCE_REQUEST_CHANNEL_CAPACITY);
+    let (capture_source, device_id) = {
+        let capture = capture.lock().await;
+        (capture.config.source, capture.config.device_id.clone())
+    };
+
+    Ok((
+        SourceRuntime {
+            source,
+            preprocess: PreprocessState::new(
+                capture_source,
+                device_id,
+                transcription_preprocess_config(source),
+            ),
+            inference_tx,
+            silence_tracker: SilenceTracker::new(LIVE_SILENCE_HOLD_MS),
+        },
+        inference_rx,
+    ))
+}
+
 #[cfg(test)]
 fn samples_to_pcm_chunk(chunk: &AudioChunk) -> Result<PcmChunk> {
     let pcm = chunk
@@ -1164,10 +1137,9 @@ fn is_terminal_session_error_code(code: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{preview_audio_chunk, should_send_session_stop, shutdown_reason_for_error, samples_to_pcm_chunk};
+    use super::{samples_to_pcm_chunk, should_send_session_stop, shutdown_reason_for_error};
     use crate::audio::capture::CaptureSource;
-    use crate::audio::capture::PcmChunk;
-    use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
+    use crate::audio::preprocess::AudioChunk;
     use crate::transport::BackendSessionError;
 
     #[test]
@@ -1223,24 +1195,5 @@ mod tests {
         assert_eq!(pcm.channels, 1);
         assert_eq!(pcm.frame_count, 3);
         assert_eq!(pcm.pcm.len(), 6);
-    }
-
-    #[test]
-    fn preview_audio_chunk_matches_resampled_duration() {
-        let preprocess = PreprocessState::new(CaptureSource::Mic, "mic-1", PreprocessConfig::default());
-        let pcm = PcmChunk {
-            source: CaptureSource::Mic,
-            device_id: "mic-1".to_string(),
-            sample_rate: 48_000,
-            channels: 2,
-            frame_count: 24_000,
-            pcm: vec![0_u8; 24_000 * 2 * 2],
-        };
-
-        let preview = preview_audio_chunk(&preprocess, &pcm).expect("preview should work");
-
-        assert_eq!(preview.sample_rate, 16_000);
-        assert_eq!(preview.channels, 1);
-        assert_eq!(preview.end_ms, 500);
     }
 }

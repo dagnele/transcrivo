@@ -3,7 +3,15 @@ use transcrivo_cli_rs::audio::preprocess::{
     downmix_to_mono, frames_to_ms, ms_to_frames, normalize_audio, pcm16le_to_f32, resample_audio,
     PreprocessConfig, PreprocessState,
 };
-use transcrivo_cli_rs::audio::vad::{should_keep_chunk, VadConfig};
+use transcrivo_cli_rs::audio::vad::{is_speech_chunk, VadConfig};
+
+fn mono_pcm(samples: &[f32]) -> Vec<u8> {
+    samples
+        .iter()
+        .map(|sample| ((*sample).clamp(-1.0, 1.0) * 32767.0) as i16)
+        .flat_map(i16::to_le_bytes)
+        .collect()
+}
 
 #[test]
 fn pcm16le_round_trip_shape() {
@@ -119,20 +127,56 @@ fn process_emits_timestamped_chunks_and_flushes_remainder() {
 }
 
 #[test]
+fn process_with_vad_fast_paths_whisper_ready_audio() {
+    let mut state = PreprocessState::new(CaptureSource::Mic, "mic-1", PreprocessConfig::default());
+    let chunk = PcmChunk {
+        source: CaptureSource::Mic,
+        device_id: "mic-1".to_string(),
+        sample_rate: 16_000,
+        channels: 1,
+        frame_count: 8_000,
+        pcm: mono_pcm(&vec![0.5_f32; 8_000]),
+    };
+
+    let result = state
+        .process_with_vad(
+            &chunk,
+            &VadConfig {
+                enabled: true,
+                min_rms: 0.1,
+            },
+        )
+        .expect("process with vad should work");
+
+    assert!(result.is_speech);
+    assert_eq!(result.chunk_duration_ms, 500);
+    assert!(result.emitted_chunks.is_empty());
+
+    let flushed = state
+        .flush()
+        .expect("flush should work")
+        .expect("flush output");
+    assert_eq!(flushed.sample_rate, 16_000);
+    assert_eq!(flushed.channels, 1);
+    assert_eq!(flushed.frame_count, 8_000);
+    assert_eq!(flushed.end_ms, 500);
+}
+
+#[test]
 fn vad_keeps_all_chunks_when_disabled() {
-    assert!(should_keep_chunk(&[0.0; 10], &VadConfig::default()));
+    assert!(is_speech_chunk(&[0.0; 10], &VadConfig::default()));
 }
 
 #[test]
 fn vad_filters_quiet_chunks_when_enabled() {
-    assert!(!should_keep_chunk(
+    assert!(!is_speech_chunk(
         &[0.0; 10],
         &VadConfig {
             enabled: true,
             min_rms: 0.1,
         }
     ));
-    assert!(should_keep_chunk(
+    assert!(is_speech_chunk(
         &[0.5; 10],
         &VadConfig {
             enabled: true,

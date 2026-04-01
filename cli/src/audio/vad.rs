@@ -27,7 +27,7 @@ pub fn chunk_rms(samples: &[f32]) -> Option<f32> {
     Some(mean_square.sqrt())
 }
 
-pub fn should_keep_chunk(samples: &[f32], config: &VadConfig) -> bool {
+pub fn is_speech_chunk(samples: &[f32], config: &VadConfig) -> bool {
     if !config.enabled {
         return true;
     }

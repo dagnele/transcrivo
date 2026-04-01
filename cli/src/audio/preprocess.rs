@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use thiserror::Error;
 
 use crate::audio::capture::{CaptureSource, PcmChunk};
+use crate::audio::vad::{is_speech_chunk, VadConfig};
 
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 pub const TARGET_CHANNELS: u16 = 1;
@@ -48,6 +49,13 @@ pub struct PreprocessState {
     processed_frames: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreprocessResult {
+    pub is_speech: bool,
+    pub chunk_duration_ms: u64,
+    pub emitted_chunks: Vec<AudioChunk>,
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PreprocessError {
     #[error("channels must be greater than zero")]
@@ -78,27 +86,24 @@ impl PreprocessState {
     }
 
     pub fn process(&mut self, chunk: &PcmChunk) -> Result<Vec<AudioChunk>, PreprocessError> {
-        let frames = pcm16le_to_f32(&chunk.pcm, chunk.channels)?;
-        let mono = downmix_to_mono(&frames);
-        let mut resampled =
-            resample_audio(&mono, chunk.sample_rate, self.config.target_sample_rate)?;
-        if self.config.normalize {
-            resampled = normalize_audio(&resampled, 0.95);
-        }
+        let prepared = self.prepare_chunk(chunk)?;
+        self.append_and_emit(prepared.samples)
+    }
 
-        self.buffer.extend(resampled);
+    pub fn process_with_vad(
+        &mut self,
+        chunk: &PcmChunk,
+        vad_config: &VadConfig,
+    ) -> Result<PreprocessResult, PreprocessError> {
+        let prepared = self.prepare_chunk(chunk)?;
+        let is_speech = is_speech_chunk(&prepared.samples, vad_config);
+        let emitted_chunks = self.append_and_emit(prepared.samples)?;
 
-        let chunk_frames = ms_to_frames(
-            self.config.chunk_duration_ms,
-            self.config.target_sample_rate,
-        )?;
-        let mut output = Vec::new();
-
-        while self.buffer.len() >= chunk_frames {
-            output.push(self.take_buffered_chunk(chunk_frames)?);
-        }
-
-        Ok(output)
+        Ok(PreprocessResult {
+            is_speech,
+            chunk_duration_ms: prepared.duration_ms,
+            emitted_chunks,
+        })
     }
 
     pub fn flush(&mut self) -> Result<Option<AudioChunk>, PreprocessError> {
@@ -128,6 +133,72 @@ impl PreprocessState {
             samples,
         })
     }
+
+    fn prepare_chunk(&self, chunk: &PcmChunk) -> Result<PreparedChunk, PreprocessError> {
+        let mut samples = if chunk.channels == self.config.target_channels
+            && chunk.sample_rate == self.config.target_sample_rate
+        {
+            decode_pcm16le_mono(&chunk.pcm)?
+        } else {
+            let frames = pcm16le_to_f32(&chunk.pcm, chunk.channels)?;
+            let mono = if chunk.channels == 1 {
+                frames
+                    .into_iter()
+                    .map(|frame| frame.first().copied().unwrap_or(0.0))
+                    .collect()
+            } else {
+                downmix_to_mono(&frames)
+            };
+
+            if chunk.sample_rate == self.config.target_sample_rate {
+                mono
+            } else {
+                resample_audio(&mono, chunk.sample_rate, self.config.target_sample_rate)?
+            }
+        };
+
+        if self.config.normalize {
+            samples = normalize_audio(&samples, 0.95);
+        }
+
+        Ok(PreparedChunk {
+            duration_ms: frames_to_ms(samples.len(), self.config.target_sample_rate)?,
+            samples,
+        })
+    }
+
+    fn append_and_emit(&mut self, samples: Vec<f32>) -> Result<Vec<AudioChunk>, PreprocessError> {
+        self.buffer.extend(samples);
+
+        let chunk_frames = ms_to_frames(
+            self.config.chunk_duration_ms,
+            self.config.target_sample_rate,
+        )?;
+        let mut output = Vec::new();
+
+        while self.buffer.len() >= chunk_frames {
+            output.push(self.take_buffered_chunk(chunk_frames)?);
+        }
+
+        Ok(output)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PreparedChunk {
+    duration_ms: u64,
+    samples: Vec<f32>,
+}
+
+fn decode_pcm16le_mono(pcm: &[u8]) -> Result<Vec<f32>, PreprocessError> {
+    if !pcm.len().is_multiple_of(2) {
+        return Err(PreprocessError::InvalidPcmShape);
+    }
+
+    Ok(pcm
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32767.0)
+        .collect())
 }
 
 pub fn pcm16le_to_f32(pcm: &[u8], channels: u16) -> Result<Vec<Vec<f32>>, PreprocessError> {
