@@ -95,8 +95,10 @@ export function SessionLiveHeader({
     <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <SidebarTrigger aria-label="Toggle sessions panel" />
-        <h1 className="truncate text-sm font-medium text-foreground">{session.title}</h1>
-        <span className="hidden text-xs text-muted-foreground sm:inline">
+        <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {session.title}
+        </h1>
+        <span className="inline-flex shrink-0 items-center self-center text-[10px] leading-none text-muted-foreground sm:text-xs">
           {getSessionTypeLabel(session.type)}
           {session.type === "coding" ? ` / ${getSessionLanguageLabel(session.language)}` : null}
         </span>
