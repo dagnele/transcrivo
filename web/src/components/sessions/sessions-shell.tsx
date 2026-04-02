@@ -8,7 +8,7 @@ import { authClient } from "@/lib/auth-client";
 import type { EntitlementSummary } from "@/lib/contracts/billing";
 import type { Session, SessionLanguage, SessionType } from "@/lib/contracts/session";
 import { useTRPC } from "@/lib/trpc";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import {
   CliSetupDialog,
   CreateSessionDialog,
@@ -191,6 +191,8 @@ export function SessionsShell({
 
   return (
     <SidebarProvider className="h-screen min-h-0">
+      <SessionsSidebarAutoClose />
+
       <SessionsSidebar
         sessions={visibleSessions}
         sessionsError={visibleSessionsError}
@@ -243,4 +245,17 @@ export function SessionsShell({
       />
     </SidebarProvider>
   );
+}
+
+function SessionsSidebarAutoClose() {
+  const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  useEffect(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  }, [isMobile, pathname, setOpenMobile]);
+
+  return null;
 }
