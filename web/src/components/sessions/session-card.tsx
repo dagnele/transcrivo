@@ -20,14 +20,14 @@ import {
 type SessionCardProps = {
   session: Session;
   isActive: boolean;
-  onCloseMobile: () => void;
+  onSelectSession: () => void;
   onSessionAction: (action: SessionsListAction, session: Session) => void;
 };
 
 export function SessionCard({
   session,
   isActive,
-  onCloseMobile,
+  onSelectSession,
   onSessionAction,
 }: SessionCardProps) {
   return (
@@ -42,7 +42,7 @@ export function SessionCard({
       <Link
         href={`/sessions/${session.id}`}
         className="flex items-center gap-2 px-2.5 py-1.5 w-full min-w-0 overflow-hidden"
-        onClick={onCloseMobile}
+        onClick={onSelectSession}
       >
         <Hash className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground" />
         <div className="min-w-0 flex-1 w-0">

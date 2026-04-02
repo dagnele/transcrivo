@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use clap::Args;
+use clap::{ArgAction, Args};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -8,12 +8,13 @@ use tracing::{debug, error, info, warn};
 
 use crate::audio::capture::{AudioCaptureWorker, CaptureSource, PcmChunk, SourceCaptures};
 use crate::audio::open_default_source_captures;
-use crate::audio::preprocess::{AudioChunk, PreprocessConfig, PreprocessState};
+use crate::audio::segmenter::{AudioSegment, SegmentBoundary, Segmenter, SegmenterConfig};
 use crate::audio::vad::VadConfig;
 use crate::commands::models::{ensure_model_downloaded, validate_model_name};
 use crate::session::manager::SessionManager;
 use crate::session::models::Source;
-use crate::transcribe::pipeline::TranscriptPipeline;
+use crate::transcribe::publisher::TranscriptPublisherStage;
+use crate::transcribe::stage::TranscriberStage;
 use crate::transcribe::whisper_cpp::{
     transcription_backend_name, RealWhisperBackend, TranscriptionError, WhisperCppAdapter,
     WhisperCppConfig,
@@ -29,7 +30,8 @@ const SESSION_EXPIRED_ERROR_CODE: &str = "session_expired";
 const SESSION_CLOSED_ERROR_CODE: &str = "session_closed";
 
 const DEFAULT_SILENCE_HOLD_MS: u64 = 1_000;
-const DEFAULT_MIN_RMS: f32 = 0.005;
+const DEFAULT_MIC_MIN_RMS: f32 = 0.01;
+const DEFAULT_SYSTEM_MIN_RMS: f32 = 0.01;
 const DEFAULT_CHUNK_MS: u32 = 5_000;
 const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(100);
 const BACKEND_MESSAGE_POLL_TIMEOUT: Duration = Duration::from_millis(10);
@@ -49,8 +51,8 @@ enum CaptureEvent {
 
 #[derive(Debug)]
 enum InferenceRequest {
-    Audio(AudioChunk),
-    Finalize,
+    Segment(AudioSegment),
+    Flush,
 }
 
 #[derive(Debug)]
@@ -62,39 +64,8 @@ struct InferenceResult {
 #[derive(Debug)]
 struct SourceRuntime {
     source: Source,
-    preprocess: PreprocessState,
+    segmenter: Segmenter,
     inference_tx: mpsc::Sender<InferenceRequest>,
-    silence_tracker: SilenceTracker,
-    live_config: LiveAudioConfig,
-}
-
-#[derive(Debug, Default)]
-struct SilenceTracker {
-    hold_ms: u64,
-    silence_ms: u64,
-}
-
-impl SilenceTracker {
-    fn new(hold_ms: u64) -> Self {
-        Self {
-            hold_ms,
-            silence_ms: 0,
-        }
-    }
-
-    fn observe(&mut self, is_speech: bool, chunk_duration_ms: u64) -> bool {
-        if is_speech {
-            self.silence_ms = 0;
-            return false;
-        }
-
-        self.silence_ms = self.silence_ms.saturating_add(chunk_duration_ms);
-        self.silence_ms >= self.hold_ms
-    }
-
-    fn reset(&mut self) {
-        self.silence_ms = 0;
-    }
 }
 
 #[derive(Debug, Args)]
@@ -144,15 +115,15 @@ pub struct RunArgs {
 
     #[arg(
         long,
-        default_value_t = DEFAULT_MIN_RMS,
-        help = "Minimum RMS level required to treat microphone audio as speech. Defaults to 0.005."
+        default_value_t = DEFAULT_MIC_MIN_RMS,
+        help = "Minimum RMS level required to treat microphone audio as speech. Defaults to 0.01."
     )]
     pub mic_min_rms: f32,
 
     #[arg(
         long,
-        default_value_t = DEFAULT_MIN_RMS,
-        help = "Minimum RMS level required to treat system audio as speech. Defaults to 0.005."
+        default_value_t = DEFAULT_SYSTEM_MIN_RMS,
+        help = "Minimum RMS level required to treat system audio as speech. Defaults to 0.01."
     )]
     pub system_min_rms: f32,
 
@@ -172,30 +143,35 @@ pub struct RunArgs {
 
     #[arg(
         long,
+        action = ArgAction::Set,
         default_value_t = true,
-        help = "Reuse prior whisper decoding context across chunks. Defaults to true. May improve continuity, but can increase drift or repetition in live transcription."
+        help = "Reuse prior whisper decoding context across chunks. Defaults to true. Setting it to false can reduce drift or repetition in live transcription."
     )]
-    pub whisper_use_context: bool,
+    pub whisper_context: bool,
 
+    #[cfg(feature = "whisper-gpu")]
     #[arg(
         long,
-        default_value_t = cfg!(feature = "whisper-gpu"),
-        help = "Use whisper.cpp GPU acceleration when the binary is built with a supported GPU backend."
-    )]
-    pub whisper_use_gpu: bool,
-
-    #[arg(
-        long,
+        action = ArgAction::Set,
         default_value_t = false,
-        help = "Enable whisper.cpp flash attention when GPU acceleration is enabled."
+        help = "Enable whisper.cpp flash attention when GPU acceleration is enabled. Defaults to false."
     )]
     pub whisper_flash_attn: bool,
 
+    #[cfg(not(feature = "whisper-gpu"))]
+    #[arg(skip = false)]
+    pub whisper_flash_attn: bool,
+
+    #[cfg(feature = "whisper-gpu")]
     #[arg(
         long,
-        default_value_t = 0,
+        default_value_t = DEFAULT_WHISPER_GPU_DEVICE,
         help = "GPU device index for whisper.cpp when GPU acceleration is enabled."
     )]
+    pub whisper_gpu_device: i32,
+
+    #[cfg(not(feature = "whisper-gpu"))]
+    #[arg(skip = 0)]
     pub whisper_gpu_device: i32,
 }
 
@@ -449,12 +425,8 @@ where
         source_runtimes.insert(source, source_runtime);
         inference_tasks.push(tokio::spawn(inference_worker(
             source,
-            TranscriptPipeline::new(
-                source,
-                session,
-                adapter_factory(source, &run_config, shutdown)?,
-                true,
-            ),
+            TranscriberStage::new(source, adapter_factory(source, &run_config, shutdown)?),
+            TranscriptPublisherStage::new(source, session),
             inference_rx,
             result_tx.clone(),
         )));
@@ -606,47 +578,30 @@ impl Drop for AbortLogSuppressionReset {
 }
 
 fn process_capture_chunk(source_runtime: &mut SourceRuntime, chunk: PcmChunk) -> Result<()> {
-    let vad_config = source_runtime.live_config.vad_config(source_runtime.source);
-    let processed = source_runtime.preprocess.process_with_vad(&chunk, &vad_config)?;
+    let segments = source_runtime.segmenter.push_chunk(&chunk)?;
 
-    for output in processed.emitted_chunks {
-        let start_ms = output.start_ms;
-        let end_ms = output.end_ms;
+    for segment in segments {
+        let start_ms = segment.start_ms;
+        let end_ms = segment.end_ms;
         enqueue_inference_request(
             &source_runtime.inference_tx,
-            InferenceRequest::Audio(output),
+            InferenceRequest::Segment(segment),
             source_runtime.source,
             start_ms,
             end_ms,
         )?;
     }
 
-    if source_runtime
-        .silence_tracker
-        .observe(processed.is_speech, processed.chunk_duration_ms)
-    {
-        enqueue_inference_request(
-            &source_runtime.inference_tx,
-            InferenceRequest::Finalize,
-            source_runtime.source,
-            0,
-            processed.chunk_duration_ms,
-        )?;
-        source_runtime.silence_tracker.reset();
-    } else if processed.is_speech {
-        source_runtime.silence_tracker.reset();
-    }
-
     Ok(())
 }
 
 fn flush_source_runtime(source_runtime: &mut SourceRuntime) -> Result<()> {
-    if let Some(flushed) = source_runtime.preprocess.flush()? {
+    if let Some(flushed) = source_runtime.segmenter.flush()? {
         let start_ms = flushed.start_ms;
         let end_ms = flushed.end_ms;
         enqueue_inference_request(
             &source_runtime.inference_tx,
-            InferenceRequest::Audio(flushed),
+            InferenceRequest::Segment(flushed),
             source_runtime.source,
             start_ms,
             end_ms,
@@ -655,7 +610,7 @@ fn flush_source_runtime(source_runtime: &mut SourceRuntime) -> Result<()> {
 
     enqueue_inference_request(
         &source_runtime.inference_tx,
-        InferenceRequest::Finalize,
+        InferenceRequest::Flush,
         source_runtime.source,
         0,
         0,
@@ -729,7 +684,8 @@ async fn drain_capture(
 
 async fn inference_worker(
     source: Source,
-    mut pipeline: TranscriptPipeline,
+    transcriber: TranscriberStage,
+    mut publisher: TranscriptPublisherStage,
     mut request_rx: mpsc::Receiver<InferenceRequest>,
     result_tx: mpsc::Sender<InferenceResult>,
 ) {
@@ -737,27 +693,40 @@ async fn inference_worker(
         let mut messages = Vec::new();
 
         match request {
-            InferenceRequest::Audio(chunk) => match pipeline.transcribe_chunk_async(&chunk).await {
-                Ok(chunk_messages) => messages.extend(chunk_messages),
+            InferenceRequest::Segment(segment) => match transcriber.transcribe_batch(&segment).await {
+                Ok(batch) => match publisher.publish_batch(&batch) {
+                    Ok(batch_messages) => messages.extend(batch_messages),
+                    Err(error) => {
+                        error!(
+                            source = ?source,
+                            boundary = ?batch.audio_boundary,
+                            error = %error,
+                            "live publisher stage failed"
+                        );
+                    }
+                },
                 Err(TranscriptionError::Aborted) => break,
                 Err(error) => {
                     error!(
                         source = ?source,
-                        start_ms = chunk.start_ms,
-                        end_ms = chunk.end_ms,
+                        start_ms = segment.start_ms,
+                        end_ms = segment.end_ms,
+                        boundary = ?segment.boundary,
                         error = %error,
                         "live inference failed"
                     );
                 }
             },
-            InferenceRequest::Finalize => {
-                if pipeline.has_pending() {
-                    debug!(source = ?source, "finalizing pending transcript utterance");
-                    match pipeline.flush_pending() {
-                        Ok(flushed) => messages.extend(flushed),
-                        Err(error) => {
-                            error!(source = ?source, error = %error, "live pipeline flush failed");
-                        }
+            InferenceRequest::Flush => {
+                debug!(source = ?source, "flushing pending transcript utterance");
+                match publisher.publish_batch(&crate::transcribe::stage::TranscriptBatch {
+                    source,
+                    audio_boundary: SegmentBoundary::Flush,
+                    chunks: Vec::new(),
+                }) {
+                    Ok(flushed) => messages.extend(flushed),
+                    Err(error) => {
+                        error!(source = ?source, error = %error, "live publisher flush failed");
                     }
                 }
             }
@@ -769,16 +738,6 @@ async fn inference_worker(
             .is_err()
         {
             break;
-        }
-    }
-
-    match pipeline.flush_pending() {
-        Ok(messages) if !messages.is_empty() => {
-            let _ = result_tx.send(InferenceResult { source, messages }).await;
-        }
-        Ok(_) => {}
-        Err(error) => {
-            error!(source = ?source, error = %error, "final live pipeline flush failed");
         }
     }
 }
@@ -1024,8 +983,8 @@ impl Default for LiveAudioConfig {
         Self {
             chunk_ms: DEFAULT_CHUNK_MS,
             silence_hold_ms: DEFAULT_SILENCE_HOLD_MS,
-            mic_min_rms: DEFAULT_MIN_RMS,
-            system_min_rms: DEFAULT_MIN_RMS,
+            mic_min_rms: DEFAULT_MIC_MIN_RMS,
+            system_min_rms: DEFAULT_SYSTEM_MIN_RMS,
             session_ready_timeout_seconds: DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
         }
     }
@@ -1042,10 +1001,12 @@ impl LiveAudioConfig {
         }
     }
 
-    fn preprocess_config(&self) -> PreprocessConfig {
-        PreprocessConfig {
-            chunk_duration_ms: self.chunk_ms,
-            ..PreprocessConfig::default()
+    fn segmenter_config(&self, source: Source) -> SegmenterConfig {
+        SegmenterConfig {
+            preprocess: crate::audio::preprocess::PreprocessConfig::default(),
+            vad: self.vad_config(source),
+            silence_hold_ms: self.silence_hold_ms,
+            max_segment_ms: u64::from(self.chunk_ms),
         }
     }
 }
@@ -1097,8 +1058,8 @@ pub fn build_run_config(args: &RunArgs) -> RunConfig {
         whisper: WhisperConfig {
             whisper_model_name: args.whisper_model_name.clone(),
             whisper_language: args.whisper_language.clone(),
-            whisper_use_context: args.whisper_use_context,
-            whisper_use_gpu: args.whisper_use_gpu,
+            whisper_use_context: args.whisper_context,
+            whisper_use_gpu: cfg!(feature = "whisper-gpu"),
             whisper_flash_attn: args.whisper_flash_attn,
             whisper_gpu_device: args.whisper_gpu_device,
         },
@@ -1151,25 +1112,24 @@ async fn build_source_runtime(
         let capture = capture.lock().await;
         (capture.config.source, capture.config.device_id.clone())
     };
+    let _ = capture_source;
 
     Ok((
         SourceRuntime {
             source,
-            preprocess: PreprocessState::new(
-                capture_source,
+            segmenter: Segmenter::new(
+                source,
                 device_id,
-                live_config.preprocess_config(),
+                live_config.segmenter_config(source),
             ),
             inference_tx,
-            silence_tracker: SilenceTracker::new(live_config.silence_hold_ms),
-            live_config: live_config.clone(),
         },
         inference_rx,
     ))
 }
 
 #[cfg(test)]
-fn samples_to_pcm_chunk(chunk: &AudioChunk) -> Result<PcmChunk> {
+fn samples_to_pcm_chunk(chunk: &crate::audio::segmenter::AudioSegment) -> Result<PcmChunk> {
     let pcm = chunk
         .samples
         .iter()
@@ -1178,12 +1138,15 @@ fn samples_to_pcm_chunk(chunk: &AudioChunk) -> Result<PcmChunk> {
         .collect::<Vec<_>>();
 
     Ok(PcmChunk {
-        source: chunk.source,
+        source: match chunk.source {
+            Source::Mic => CaptureSource::Mic,
+            Source::System => CaptureSource::System,
+        },
         device_id: chunk.device_id.clone(),
         sample_rate: chunk.sample_rate,
         channels: chunk.channels,
-        frame_count: u32::try_from(chunk.frame_count)
-            .map_err(|_| anyhow::anyhow!("audio chunk frame count exceeds u32"))?,
+        frame_count: u32::try_from(chunk.samples.len())
+            .map_err(|_| anyhow::anyhow!("audio segment frame count exceeds u32"))?,
         pcm,
     })
 }
@@ -1239,7 +1202,8 @@ fn is_terminal_session_error_code(code: Option<&str>) -> bool {
 mod tests {
     use super::{samples_to_pcm_chunk, should_send_session_stop, shutdown_reason_for_error};
     use crate::audio::capture::CaptureSource;
-    use crate::audio::preprocess::AudioChunk;
+    use crate::audio::segmenter::{AudioSegment, SegmentBoundary};
+    use crate::session::models::Source;
     use crate::transport::BackendSessionError;
 
     #[test]
@@ -1276,15 +1240,15 @@ mod tests {
 
     #[test]
     fn samples_to_pcm_chunk_preserves_basic_shape() {
-        let chunk = AudioChunk {
-            source: CaptureSource::Mic,
+        let chunk = AudioSegment {
+            source: Source::Mic,
             device_id: "mic-1".to_string(),
             sample_rate: 16_000,
             channels: 1,
             start_ms: 0,
             end_ms: 500,
-            frame_count: 3,
             samples: vec![0.0, 0.5, -0.5],
+            boundary: SegmentBoundary::Flush,
         };
 
         let pcm = samples_to_pcm_chunk(&chunk).expect("pcm conversion should work");
@@ -1296,4 +1260,7 @@ mod tests {
         assert_eq!(pcm.frame_count, 3);
         assert_eq!(pcm.pcm.len(), 6);
     }
+
 }
+#[cfg(feature = "whisper-gpu")]
+const DEFAULT_WHISPER_GPU_DEVICE: i32 = 0;

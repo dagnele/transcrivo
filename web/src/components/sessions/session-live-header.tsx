@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, PanelLeft, Terminal } from "lucide-react";
+import { Download, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
 import { getSessionLanguageLabel, getSessionTypeLabel } from "@/lib/session-config";
 import { cn } from "@/lib/utils";
@@ -20,8 +21,6 @@ type SessionLiveHeaderProps = {
   expiresAt: Date | null;
   accessKind: string | null;
   trialEndsAt: Date | null;
-  showSidebarToggle: boolean;
-  onToggleSidebar: () => void;
   onOpenCli: () => void;
   transcriptItems?: TranscriptItem[];
   solution?: SessionSolution | null;
@@ -75,8 +74,6 @@ export function SessionLiveHeader({
   expiresAt,
   accessKind,
   trialEndsAt,
-  showSidebarToggle,
-  onToggleSidebar,
   onOpenCli,
   transcriptItems = [],
   solution = null,
@@ -89,18 +86,9 @@ export function SessionLiveHeader({
   };
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-b border-border/60 px-6 py-2.5">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-6">
       <div className="flex items-center gap-3">
-        {showSidebarToggle ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggleSidebar}
-            aria-label="Show sessions panel"
-          >
-            <PanelLeft className="h-4 w-4" />
-          </Button>
-        ) : null}
+        <SidebarTrigger aria-label="Toggle sessions panel" />
         <h1 className="text-sm font-medium text-foreground">{session.title}</h1>
         <span className="text-xs text-muted-foreground">
           {getSessionTypeLabel(session.type)}

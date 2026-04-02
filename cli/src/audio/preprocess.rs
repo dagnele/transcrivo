@@ -1,19 +1,14 @@
-use std::collections::VecDeque;
-
 use thiserror::Error;
 
-use crate::audio::capture::{CaptureSource, PcmChunk};
-use crate::audio::vad::{is_speech_chunk, VadConfig};
+use crate::audio::capture::PcmChunk;
 
 pub const TARGET_SAMPLE_RATE: u32 = 16_000;
 pub const TARGET_CHANNELS: u16 = 1;
-pub const DEFAULT_CHUNK_MS: u32 = 1_000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreprocessConfig {
     pub target_sample_rate: u32,
     pub target_channels: u16,
-    pub chunk_duration_ms: u32,
     pub normalize: bool,
 }
 
@@ -22,38 +17,15 @@ impl Default for PreprocessConfig {
         Self {
             target_sample_rate: TARGET_SAMPLE_RATE,
             target_channels: TARGET_CHANNELS,
-            chunk_duration_ms: DEFAULT_CHUNK_MS,
             normalize: false,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioChunk {
-    pub source: CaptureSource,
-    pub device_id: String,
-    pub sample_rate: u32,
-    pub channels: u16,
-    pub start_ms: u64,
-    pub end_ms: u64,
-    pub frame_count: usize,
+pub struct PreparedAudio {
+    pub duration_ms: u64,
     pub samples: Vec<f32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PreprocessState {
-    pub config: PreprocessConfig,
-    pub source: CaptureSource,
-    pub device_id: String,
-    buffer: VecDeque<f32>,
-    processed_frames: usize,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct PreprocessResult {
-    pub is_speech: bool,
-    pub chunk_duration_ms: u64,
-    pub emitted_chunks: Vec<AudioChunk>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -64,130 +36,44 @@ pub enum PreprocessError {
     InvalidPcmShape,
     #[error("sample rates must be greater than zero")]
     InvalidSampleRate,
-    #[error("duration_ms must be greater than zero")]
-    InvalidDuration,
     #[error("frame_count must be zero or greater")]
     InvalidFrameCount,
 }
 
-impl PreprocessState {
-    pub fn new(
-        source: CaptureSource,
-        device_id: impl Into<String>,
-        config: PreprocessConfig,
-    ) -> Self {
-        Self {
-            config,
-            source,
-            device_id: device_id.into(),
-            buffer: VecDeque::new(),
-            processed_frames: 0,
-        }
-    }
-
-    pub fn process(&mut self, chunk: &PcmChunk) -> Result<Vec<AudioChunk>, PreprocessError> {
-        let prepared = self.prepare_chunk(chunk)?;
-        self.append_and_emit(prepared.samples)
-    }
-
-    pub fn process_with_vad(
-        &mut self,
-        chunk: &PcmChunk,
-        vad_config: &VadConfig,
-    ) -> Result<PreprocessResult, PreprocessError> {
-        let prepared = self.prepare_chunk(chunk)?;
-        let is_speech = is_speech_chunk(&prepared.samples, vad_config);
-        let emitted_chunks = self.append_and_emit(prepared.samples)?;
-
-        Ok(PreprocessResult {
-            is_speech,
-            chunk_duration_ms: prepared.duration_ms,
-            emitted_chunks,
-        })
-    }
-
-    pub fn flush(&mut self) -> Result<Option<AudioChunk>, PreprocessError> {
-        if self.buffer.is_empty() {
-            return Ok(None);
-        }
-
-        let chunk = self.take_buffered_chunk(self.buffer.len())?;
-
-        Ok(Some(chunk))
-    }
-
-    fn take_buffered_chunk(&mut self, frame_count: usize) -> Result<AudioChunk, PreprocessError> {
-        let samples: Vec<f32> = self.buffer.drain(..frame_count).collect();
-        let start_ms = frames_to_ms(self.processed_frames, self.config.target_sample_rate)?;
-        self.processed_frames += samples.len();
-        let end_ms = frames_to_ms(self.processed_frames, self.config.target_sample_rate)?;
-
-        Ok(AudioChunk {
-            source: self.source,
-            device_id: self.device_id.clone(),
-            sample_rate: self.config.target_sample_rate,
-            channels: self.config.target_channels,
-            start_ms,
-            end_ms,
-            frame_count: samples.len(),
-            samples,
-        })
-    }
-
-    fn prepare_chunk(&self, chunk: &PcmChunk) -> Result<PreparedChunk, PreprocessError> {
-        let mut samples = if chunk.channels == self.config.target_channels
-            && chunk.sample_rate == self.config.target_sample_rate
-        {
-            decode_pcm16le_mono(&chunk.pcm)?
+pub fn prepare_pcm_chunk(
+    chunk: &PcmChunk,
+    config: &PreprocessConfig,
+) -> Result<PreparedAudio, PreprocessError> {
+    let mut samples = if chunk.channels == config.target_channels
+        && chunk.sample_rate == config.target_sample_rate
+    {
+        decode_pcm16le_mono(&chunk.pcm)?
+    } else {
+        let frames = pcm16le_to_f32(&chunk.pcm, chunk.channels)?;
+        let mono = if chunk.channels == 1 {
+            frames
+                .into_iter()
+                .map(|frame| frame.first().copied().unwrap_or(0.0))
+                .collect()
         } else {
-            let frames = pcm16le_to_f32(&chunk.pcm, chunk.channels)?;
-            let mono = if chunk.channels == 1 {
-                frames
-                    .into_iter()
-                    .map(|frame| frame.first().copied().unwrap_or(0.0))
-                    .collect()
-            } else {
-                downmix_to_mono(&frames)
-            };
-
-            if chunk.sample_rate == self.config.target_sample_rate {
-                mono
-            } else {
-                resample_audio(&mono, chunk.sample_rate, self.config.target_sample_rate)?
-            }
+            downmix_to_mono(&frames)
         };
 
-        if self.config.normalize {
-            samples = normalize_audio(&samples, 0.95);
+        if chunk.sample_rate == config.target_sample_rate {
+            mono
+        } else {
+            resample_audio(&mono, chunk.sample_rate, config.target_sample_rate)?
         }
+    };
 
-        Ok(PreparedChunk {
-            duration_ms: frames_to_ms(samples.len(), self.config.target_sample_rate)?,
-            samples,
-        })
+    if config.normalize {
+        samples = normalize_audio(&samples, 0.95);
     }
 
-    fn append_and_emit(&mut self, samples: Vec<f32>) -> Result<Vec<AudioChunk>, PreprocessError> {
-        self.buffer.extend(samples);
-
-        let chunk_frames = ms_to_frames(
-            self.config.chunk_duration_ms,
-            self.config.target_sample_rate,
-        )?;
-        let mut output = Vec::new();
-
-        while self.buffer.len() >= chunk_frames {
-            output.push(self.take_buffered_chunk(chunk_frames)?);
-        }
-
-        Ok(output)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-struct PreparedChunk {
-    duration_ms: u64,
-    samples: Vec<f32>,
+    Ok(PreparedAudio {
+        duration_ms: frames_to_ms(samples.len(), config.target_sample_rate)?,
+        samples,
+    })
 }
 
 fn decode_pcm16le_mono(pcm: &[u8]) -> Result<Vec<f32>, PreprocessError> {
@@ -299,7 +185,7 @@ pub fn resample_audio(
 
 pub fn ms_to_frames(duration_ms: u32, sample_rate: u32) -> Result<usize, PreprocessError> {
     if duration_ms == 0 {
-        return Err(PreprocessError::InvalidDuration);
+        return Err(PreprocessError::InvalidFrameCount);
     }
     if sample_rate == 0 {
         return Err(PreprocessError::InvalidSampleRate);

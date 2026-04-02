@@ -47,7 +47,7 @@ describe("assignDraftSessionAccess", () => {
     });
 
     expect(result.accessKind).toBe("trial");
-    expect(result.trialEndsAt?.toISOString()).toBe("2026-03-24T12:05:00.000Z");
+    expect(result.trialEndsAt?.toISOString()).toBe("2026-03-24T12:30:00.000Z");
     expect(paidCalls).toBe(1);
     expect(trialCalls).toBe(1);
   });

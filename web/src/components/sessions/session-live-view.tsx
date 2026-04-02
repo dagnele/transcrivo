@@ -6,7 +6,6 @@ import { useSubscription } from "@trpc/tanstack-react-query";
 
 import { CliSetupDialog } from "@/components/sessions/cli-setup-dialog";
 import { SessionLiveHeader } from "@/components/sessions/session-live-header";
-import { useSessionsSidebar } from "@/components/sessions/sessions-shell";
 import { SessionTranscriptPane } from "@/components/sessions/session-transcript-pane";
 import type { TranscriptItem } from "@/components/sessions/session-transcript";
 import { SolutionPane } from "@/components/sessions/session-solution-pane";
@@ -26,7 +25,7 @@ import { getConnectionLabel } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
 
 const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
-const LOCAL_TRIAL_DURATION_MS = 5 * 60 * 1000;
+const LOCAL_TRIAL_DURATION_MS = 30 * 60 * 1000;
 
 type SessionLiveViewProps = {
   session: Session;
@@ -194,7 +193,6 @@ export function SessionLiveView({
 }: SessionLiveViewProps) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const { sidebarOpen, toggleSidebar } = useSessionsSidebar();
   const [cliDialogOpen, setCliDialogOpen] = useState(false);
   const [lifecycleState, setLifecycleState] = useState<LifecycleState>({
     status: session.status,
@@ -308,7 +306,7 @@ export function SessionLiveView({
   const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       <SessionLiveHeader
         session={session}
         status={lifecycleState.status}
@@ -316,8 +314,6 @@ export function SessionLiveView({
         expiresAt={lifecycleState.expiresAt}
         accessKind={lifecycleState.accessKind}
         trialEndsAt={lifecycleState.trialEndsAt}
-        showSidebarToggle={!sidebarOpen}
-        onToggleSidebar={toggleSidebar}
         onOpenCli={() => setCliDialogOpen(true)}
         transcriptItems={transcriptItems}
         solution={solutionState.solution}

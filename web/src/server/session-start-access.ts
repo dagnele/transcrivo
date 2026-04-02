@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 
 import type { SessionAccessKind } from "@/lib/contracts/billing";
 
-const TRIAL_DURATION_MS = 5 * 60 * 1000;
+const TRIAL_DURATION_MS = 30 * 60 * 1000;
 
 type AssignDraftSessionAccessInput = {
   purchasedSessionCredits: number;

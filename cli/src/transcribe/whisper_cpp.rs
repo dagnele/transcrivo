@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
-use crate::audio::preprocess::AudioChunk;
+use crate::audio::segmenter::AudioSegment;
 use crate::util::paths::default_models_dir;
 use crate::util::shutdown::ShutdownController;
 
@@ -89,7 +89,7 @@ pub enum TranscriptionError {
 pub trait WhisperBackend: Send + Sync {
     fn transcribe(
         &self,
-        chunk: &AudioChunk,
+        segment: &AudioSegment,
         config: &WhisperCppConfig,
     ) -> Result<Vec<TranscriptSegment>, TranscriptionError>;
 }
@@ -152,10 +152,10 @@ impl RealWhisperBackend {
 impl WhisperBackend for RealWhisperBackend {
     fn transcribe(
         &self,
-        chunk: &AudioChunk,
+        segment: &AudioSegment,
         config: &WhisperCppConfig,
     ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
-        if chunk.samples.is_empty() {
+        if segment.samples.is_empty() {
             return Ok(Vec::new());
         }
 
@@ -183,7 +183,7 @@ impl WhisperBackend for RealWhisperBackend {
 
         guard
             .state
-            .full(params, &chunk.samples)
+            .full(params, &segment.samples)
             .map_err(|error| match error {
                 whisper_rs::WhisperError::GenericError(-2)
                 | whisper_rs::WhisperError::GenericError(-6)
@@ -200,8 +200,8 @@ impl WhisperBackend for RealWhisperBackend {
             })?;
 
         let mut results = Vec::new();
-        for segment in guard.state.as_iter() {
-            let text = segment
+        for whisper_segment in guard.state.as_iter() {
+            let text = whisper_segment
                 .to_str_lossy()
                 .map_err(|error| TranscriptionError::Inference(error.to_string()))?
                 .trim()
@@ -210,13 +210,13 @@ impl WhisperBackend for RealWhisperBackend {
                 continue;
             }
 
-            let start_ms = chunk
+            let start_ms = segment
                 .start_ms
-                .saturating_add(timestamp_to_ms(segment.start_timestamp()));
-            let end_ms = chunk.end_ms.min(
-                chunk
+                .saturating_add(timestamp_to_ms(whisper_segment.start_timestamp()));
+            let end_ms = segment.end_ms.min(
+                segment
                     .start_ms
-                    .saturating_add(timestamp_to_ms(segment.end_timestamp())),
+                    .saturating_add(timestamp_to_ms(whisper_segment.end_timestamp())),
             );
 
             results.push(TranscriptSegment {
@@ -278,15 +278,15 @@ impl WhisperCppAdapter {
     /// responsive.
     pub async fn transcribe_chunk_async(
         &self,
-        chunk: &AudioChunk,
+        segment: &AudioSegment,
     ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
-        Self::validate_chunk(chunk)?;
+        Self::validate_chunk(segment)?;
 
         let backend = Arc::clone(&self.backend);
         let config = self.config.clone();
-        let chunk = chunk.clone();
+        let segment = segment.clone();
 
-        let segments = tokio::task::spawn_blocking(move || backend.transcribe(&chunk, &config))
+        let segments = tokio::task::spawn_blocking(move || backend.transcribe(&segment, &config))
             .await
             .map_err(|join_error| {
                 TranscriptionError::Backend(format!(
@@ -302,18 +302,18 @@ impl WhisperCppAdapter {
         Ok(output)
     }
 
-    fn validate_chunk(chunk: &AudioChunk) -> Result<(), TranscriptionError> {
-        if chunk.channels != 1 {
+    fn validate_chunk(segment: &AudioSegment) -> Result<(), TranscriptionError> {
+        if segment.channels != 1 {
             return Err(TranscriptionError::InvalidChunk(
                 "Transcription input must be mono audio".to_string(),
             ));
         }
-        if chunk.sample_rate == 0 {
+        if segment.sample_rate == 0 {
             return Err(TranscriptionError::InvalidChunk(
                 "Transcription input sample rate must be greater than zero".to_string(),
             ));
         }
-        if chunk.sample_rate != 16_000 {
+        if segment.sample_rate != 16_000 {
             return Err(TranscriptionError::InvalidChunk(
                 "Transcription input sample rate must be 16 kHz".to_string(),
             ));

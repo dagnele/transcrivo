@@ -176,7 +176,7 @@ export default async function HomePage() {
               </p>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <PricingFeature>1 free session per account</PricingFeature>
-                <PricingFeature>5-minute session limit</PricingFeature>
+                <PricingFeature>30-minute session limit</PricingFeature>
                 <PricingFeature>Full live transcript</PricingFeature>
                 <PricingFeature>AI-powered solutions</PricingFeature>
                 <PricingFeature>Local Whisper transcription</PricingFeature>
@@ -199,7 +199,7 @@ export default async function HomePage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-3xl font-semibold tracking-tight">
-                $10
+                $5
                 <span className="ml-1 text-sm font-normal text-muted-foreground">
                   / session
                 </span>

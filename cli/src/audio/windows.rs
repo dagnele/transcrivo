@@ -382,11 +382,27 @@ fn create_mic_capture(device: &AudioDevice) -> Result<AudioCaptureWorker, Device
     Ok(AudioCaptureWorker::native_windows_wasapi(config, spec))
 }
 
+#[cfg(not(target_os = "windows"))]
+fn create_mic_capture(_device: &AudioDevice) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
+    Err(DeviceDiscoveryError::UnsupportedPlatform(
+        std::env::consts::OS.to_string(),
+    ))
+}
+
 #[cfg(target_os = "windows")]
 fn create_system_capture(device: &AudioDevice) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
     let config = create_system_config(device);
     let spec = build_native_capture_spec(device)?;
     Ok(AudioCaptureWorker::native_windows_wasapi(config, spec))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_system_capture(
+    _device: &AudioDevice,
+) -> Result<AudioCaptureWorker, DeviceDiscoveryError> {
+    Err(DeviceDiscoveryError::UnsupportedPlatform(
+        std::env::consts::OS.to_string(),
+    ))
 }
 
 pub fn inventory_from_enumerated_endpoints(

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tracing::{debug, error};
 
-use crate::audio::preprocess::AudioChunk;
+use crate::audio::segmenter::AudioSegment;
 use crate::session::manager::SessionManager;
 use crate::session::models::{Source, TranscriptMessageType};
 use crate::transcribe::whisper_cpp::{TranscriptSegment, TranscriptionError, WhisperCppAdapter};
@@ -15,6 +15,7 @@ struct PendingUtterance {
     text: String,
     start_ms: u64,
     end_ms: u64,
+    last_emitted_end_ms: Option<u64>,
 }
 
 const MAX_PENDING_UTTERANCE_CHARS: usize = 300;
@@ -30,7 +31,7 @@ struct ForcedCut {
 pub struct TranscriptPipeline {
     source: Source,
     session: Arc<SessionManager>,
-    adapter: WhisperCppAdapter,
+    adapter: Option<WhisperCppAdapter>,
     emit_partial_events: bool,
     pending_utterance: Option<PendingUtterance>,
     last_partial_text: Option<String>,
@@ -41,6 +42,23 @@ impl TranscriptPipeline {
         source: Source,
         session: Arc<SessionManager>,
         adapter: WhisperCppAdapter,
+        emit_partial_events: bool,
+    ) -> Self {
+        Self::new_with_optional_adapter(source, session, Some(adapter), emit_partial_events)
+    }
+
+    pub fn new_without_adapter(
+        source: Source,
+        session: Arc<SessionManager>,
+        emit_partial_events: bool,
+    ) -> Self {
+        Self::new_with_optional_adapter(source, session, None, emit_partial_events)
+    }
+
+    fn new_with_optional_adapter(
+        source: Source,
+        session: Arc<SessionManager>,
+        adapter: Option<WhisperCppAdapter>,
         emit_partial_events: bool,
     ) -> Self {
         Self {
@@ -57,35 +75,47 @@ impl TranscriptPipeline {
     /// runtime via `spawn_blocking`, preventing the event loop from stalling.
     pub async fn transcribe_chunk_async(
         &mut self,
-        chunk: &AudioChunk,
+        segment: &AudioSegment,
     ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
-        let segments = self.run_adapter_async(chunk).await?;
+        let segments = self.run_adapter_async(segment).await?;
         self.process_segments(&segments)
+    }
+
+    pub fn process_transcript_segments(
+        &mut self,
+        segments: &[TranscriptSegment],
+    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+        self.process_segments(segments)
     }
 
     async fn run_adapter_async(
         &self,
-        chunk: &AudioChunk,
+        segment: &AudioSegment,
     ) -> Result<Vec<crate::transcribe::whisper_cpp::TranscriptSegment>, TranscriptionError> {
-        if Source::from(chunk.source) != self.source {
+        let adapter = self
+            .adapter
+            .as_ref()
+            .ok_or(TranscriptionError::NotConfigured)?;
+
+        if segment.source != self.source {
             return Err(TranscriptionError::InvalidChunk(format!(
-                "Transcription pipeline for {:?} cannot process chunk from {:?}",
-                self.source, chunk.source
+                "Transcription pipeline for {:?} cannot process segment from {:?}",
+                self.source, segment.source
             )));
         }
 
-        self.adapter
-            .transcribe_chunk_async(chunk)
+        adapter
+            .transcribe_chunk_async(segment)
             .await
             .map_err(|error| {
                 if matches!(error, TranscriptionError::Aborted) {
                     return error;
                 }
                 error!(
-                    source = ?chunk.source,
-                    device_id = %chunk.device_id,
-                    start_ms = chunk.start_ms,
-                    end_ms = chunk.end_ms,
+                    source = ?segment.source,
+                    device_id = %segment.device_id,
+                    start_ms = segment.start_ms,
+                    end_ms = segment.end_ms,
                     error = %error,
                     "transcription failed"
                 );
@@ -166,6 +196,7 @@ impl TranscriptPipeline {
                 text: merge_text(&pending.text, &combined.text),
                 start_ms: pending.start_ms.min(combined.start_ms),
                 end_ms: pending.end_ms.max(combined.end_ms),
+                last_emitted_end_ms: pending.last_emitted_end_ms,
             });
         } else {
             self.pending_utterance = Some(combined);
@@ -176,7 +207,7 @@ impl TranscriptPipeline {
             return Ok(messages);
         }
 
-        let current = match &self.pending_utterance {
+        let current = match self.pending_utterance.clone() {
             Some(current) => current,
             None => return Ok(Vec::new()),
         };
@@ -200,6 +231,9 @@ impl TranscriptPipeline {
             text = %current.text,
             "emitted transcript.partial"
         );
+        if let Some(pending) = &mut self.pending_utterance {
+            pending.last_emitted_end_ms = Some(current.end_ms);
+        }
         messages.push(message);
         Ok(messages)
     }
@@ -282,19 +316,22 @@ fn split_pending_utterance(
         cut.consumed_chars,
         total_chars,
         remainder_exists,
-    );
+    )
+    .max(pending.last_emitted_end_ms.unwrap_or(pending.start_ms));
 
     let finalized = PendingUtterance {
         utterance_id: pending.utterance_id.clone(),
         text: cut.finalized_text,
         start_ms: pending.start_ms,
         end_ms: split_ms,
+        last_emitted_end_ms: pending.last_emitted_end_ms,
     };
     let remainder = cut.remainder_text.map(|text| PendingUtterance {
         utterance_id: new_utterance_id(),
         text,
         start_ms: split_ms,
         end_ms: pending.end_ms,
+        last_emitted_end_ms: None,
     });
 
     (finalized, remainder)
@@ -334,6 +371,7 @@ fn combine_segments(segments: &[TranscriptSegment]) -> PendingUtterance {
         text,
         start_ms: first.start_ms,
         end_ms: last.end_ms,
+        last_emitted_end_ms: None,
     }
 }
 

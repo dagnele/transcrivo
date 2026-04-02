@@ -1,9 +1,9 @@
 use transcrivo_cli_rs::audio::capture::{CaptureSource, PcmChunk};
 use transcrivo_cli_rs::audio::preprocess::{
-    downmix_to_mono, frames_to_ms, ms_to_frames, normalize_audio, pcm16le_to_f32, resample_audio,
-    PreprocessConfig, PreprocessState,
+    downmix_to_mono, frames_to_ms, ms_to_frames, normalize_audio, pcm16le_to_f32,
+    prepare_pcm_chunk, resample_audio, PreprocessConfig,
 };
-use transcrivo_cli_rs::audio::vad::{is_speech_chunk, VadConfig};
+use transcrivo_cli_rs::audio::segmenter::{AudioSegment, SegmentBoundary};
 
 fn mono_pcm(samples: &[f32]) -> Vec<u8> {
     samples
@@ -67,68 +67,7 @@ fn frame_ms_helpers_are_inverse_enough_for_chunks() {
 }
 
 #[test]
-fn process_emits_timestamped_chunks_and_flushes_remainder() {
-    let mut state = PreprocessState::new(CaptureSource::Mic, "mic-1", PreprocessConfig::default());
-
-    let frames_a = vec![0.25_f32; 48_000 * 2];
-    let frames_b = vec![0.25_f32; 24_000 * 2];
-    let chunk_a = PcmChunk {
-        source: CaptureSource::Mic,
-        device_id: "mic-1".to_string(),
-        sample_rate: 48_000,
-        channels: 2,
-        frame_count: 48_000,
-        pcm: frames_a
-            .chunks_exact(2)
-            .flat_map(|frame| {
-                frame
-                    .iter()
-                    .map(|sample| (*sample * 32767.0) as i16)
-                    .flat_map(i16::to_le_bytes)
-                    .collect::<Vec<_>>()
-            })
-            .collect(),
-    };
-    let chunk_b = PcmChunk {
-        source: CaptureSource::Mic,
-        device_id: "mic-1".to_string(),
-        sample_rate: 48_000,
-        channels: 2,
-        frame_count: 24_000,
-        pcm: frames_b
-            .chunks_exact(2)
-            .flat_map(|frame| {
-                frame
-                    .iter()
-                    .map(|sample| (*sample * 32767.0) as i16)
-                    .flat_map(i16::to_le_bytes)
-                    .collect::<Vec<_>>()
-            })
-            .collect(),
-    };
-
-    let first_output = state.process(&chunk_a).expect("first process should work");
-    let second_output = state.process(&chunk_b).expect("second process should work");
-    let final_output = state
-        .flush()
-        .expect("flush should work")
-        .expect("flush output");
-
-    assert_eq!(first_output.len(), 1);
-    assert_eq!(first_output[0].start_ms, 0);
-    assert_eq!(first_output[0].end_ms, 1000);
-    assert_eq!(first_output[0].sample_rate, 16_000);
-    assert_eq!(first_output[0].channels, 1);
-
-    assert_eq!(second_output.len(), 0);
-    assert_eq!(final_output.start_ms, 1000);
-    assert_eq!(final_output.end_ms, 1500);
-    assert_eq!(final_output.frame_count, 8_000);
-}
-
-#[test]
-fn process_with_vad_fast_paths_whisper_ready_audio() {
-    let mut state = PreprocessState::new(CaptureSource::Mic, "mic-1", PreprocessConfig::default());
+fn prepare_pcm_chunk_fast_paths_whisper_ready_audio() {
     let chunk = PcmChunk {
         source: CaptureSource::Mic,
         device_id: "mic-1".to_string(),
@@ -138,49 +77,59 @@ fn process_with_vad_fast_paths_whisper_ready_audio() {
         pcm: mono_pcm(&vec![0.5_f32; 8_000]),
     };
 
-    let result = state
-        .process_with_vad(
-            &chunk,
-            &VadConfig {
-                enabled: true,
-                min_rms: 0.1,
-            },
-        )
-        .expect("process with vad should work");
+    let result = prepare_pcm_chunk(&chunk, &PreprocessConfig::default())
+        .expect("prepare pcm chunk should work");
 
-    assert!(result.is_speech);
-    assert_eq!(result.chunk_duration_ms, 500);
-    assert!(result.emitted_chunks.is_empty());
-
-    let flushed = state
-        .flush()
-        .expect("flush should work")
-        .expect("flush output");
-    assert_eq!(flushed.sample_rate, 16_000);
-    assert_eq!(flushed.channels, 1);
-    assert_eq!(flushed.frame_count, 8_000);
-    assert_eq!(flushed.end_ms, 500);
+    assert_eq!(result.duration_ms, 500);
+    assert_eq!(result.samples.len(), 8_000);
+    assert!(result
+        .samples
+        .iter()
+        .all(|sample| (*sample - 0.5).abs() < 0.001));
 }
 
 #[test]
-fn vad_keeps_all_chunks_when_disabled() {
-    assert!(is_speech_chunk(&[0.0; 10], &VadConfig::default()));
+fn prepare_pcm_chunk_downmixes_and_resamples() {
+    let stereo_frames = vec![0.25_f32; 48_000 * 2];
+    let chunk = PcmChunk {
+        source: CaptureSource::Mic,
+        device_id: "mic-1".to_string(),
+        sample_rate: 48_000,
+        channels: 2,
+        frame_count: 48_000,
+        pcm: stereo_frames
+            .chunks_exact(2)
+            .flat_map(|frame| {
+                frame
+                    .iter()
+                    .map(|sample| (*sample * 32767.0) as i16)
+                    .flat_map(i16::to_le_bytes)
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
+    };
+
+    let result = prepare_pcm_chunk(&chunk, &PreprocessConfig::default())
+        .expect("prepare pcm chunk should work");
+
+    assert_eq!(result.duration_ms, 1000);
+    assert_eq!(result.samples.len(), 16_000);
 }
 
 #[test]
-fn vad_filters_quiet_chunks_when_enabled() {
-    assert!(!is_speech_chunk(
-        &[0.0; 10],
-        &VadConfig {
-            enabled: true,
-            min_rms: 0.1,
-        }
-    ));
-    assert!(is_speech_chunk(
-        &[0.5; 10],
-        &VadConfig {
-            enabled: true,
-            min_rms: 0.1,
-        }
-    ));
+fn audio_segment_preserves_basic_shape() {
+    let chunk = AudioSegment {
+        source: transcrivo_cli_rs::session::models::Source::Mic,
+        device_id: "mic-1".to_string(),
+        sample_rate: 16_000,
+        channels: 1,
+        start_ms: 0,
+        end_ms: 500,
+        samples: vec![0.0, 0.5, -0.5],
+        boundary: SegmentBoundary::Flush,
+    };
+
+    assert_eq!(chunk.sample_rate, 16_000);
+    assert_eq!(chunk.channels, 1);
+    assert_eq!(chunk.samples.len(), 3);
 }

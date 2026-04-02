@@ -4,7 +4,7 @@ export default function SessionDetailLoadingPage() {
   return (
     <div className="flex h-screen flex-col">
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-6 py-2.5">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-6">
         <div className="flex items-center gap-3">
           <Skeleton className="h-4 w-40" />
           <Skeleton className="h-4 w-24" />

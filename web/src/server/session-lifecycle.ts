@@ -9,7 +9,7 @@ import { getLastPublishedSessionSequence, publishSessionEvent } from "@/server/a
 import { sessionEventSchema } from "@/lib/contracts/event";
 
 export const SESSION_DURATION_MS = 60 * 60 * 1000;
-export const TRIAL_DURATION_MS = 5 * 60 * 1000;
+export const TRIAL_DURATION_MS = 30 * 60 * 1000;
 
 const CLOSED_SESSION_STATUSES = new Set<SessionStatus>(["ended", "failed", "expired"]);
 

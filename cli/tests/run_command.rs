@@ -1,3 +1,5 @@
+use clap::Parser;
+use transcrivo_cli_rs::cli::{Cli, Command};
 use transcrivo_cli_rs::commands::models::validate_model_name;
 use transcrivo_cli_rs::commands::run::{
     build_run_config, build_session_start_message, describe_selected_devices, validate_backend_url,
@@ -5,6 +7,8 @@ use transcrivo_cli_rs::commands::run::{
 };
 use transcrivo_cli_rs::session::manager::SessionManager;
 use transcrivo_cli_rs::session::models::Source;
+
+const TEST_WHISPER_GPU_DEVICE: i32 = 0;
 
 fn selected_devices(mic_name: &str, system_name: &str) -> SelectedDevices {
     SelectedDevices {
@@ -73,14 +77,15 @@ fn build_session_start_message_includes_selected_device_ids() {
         whisper_model_name: "large".to_string(),
         chunk_ms: 5_000,
         silence_hold_ms: 1_000,
-        mic_min_rms: 0.005,
-        system_min_rms: 0.005,
+        mic_min_rms: 0.01,
+        system_min_rms: 0.01,
         session_ready_timeout_seconds: 5.0,
         whisper_language: "en".to_string(),
-        whisper_use_context: true,
-        whisper_use_gpu: false,
+        whisper_context: true,
+        #[cfg(feature = "whisper-gpu")]
         whisper_flash_attn: false,
-        whisper_gpu_device: 0,
+        #[cfg(feature = "whisper-gpu")]
+        whisper_gpu_device: TEST_WHISPER_GPU_DEVICE,
     });
 
     let message = build_session_start_message(&mut session, &selected_devices, &config)
@@ -119,9 +124,10 @@ fn build_run_config_preserves_runtime_and_whisper_options() {
         system_min_rms: 0.02,
         session_ready_timeout_seconds: 12.5,
         whisper_language: "it".to_string(),
-        whisper_use_context: true,
-        whisper_use_gpu: true,
+        whisper_context: true,
+        #[cfg(feature = "whisper-gpu")]
         whisper_flash_attn: true,
+        #[cfg(feature = "whisper-gpu")]
         whisper_gpu_device: 2,
     };
 
@@ -135,9 +141,18 @@ fn build_run_config_preserves_runtime_and_whisper_options() {
     assert_eq!(config.whisper.whisper_model_name, "base.en");
     assert_eq!(config.whisper.whisper_language, "it");
     assert!(config.whisper.whisper_use_context);
-    assert!(config.whisper.whisper_use_gpu);
-    assert!(config.whisper.whisper_flash_attn);
-    assert_eq!(config.whisper.whisper_gpu_device, 2);
+    assert_eq!(
+        config.whisper.whisper_use_gpu,
+        cfg!(feature = "whisper-gpu")
+    );
+    assert_eq!(
+        config.whisper.whisper_flash_attn,
+        cfg!(feature = "whisper-gpu")
+    );
+    assert_eq!(
+        config.whisper.whisper_gpu_device,
+        if cfg!(feature = "whisper-gpu") { 2 } else { 0 }
+    );
 }
 
 #[test]
@@ -150,28 +165,97 @@ fn build_run_config_defaults_are_source_agnostic() {
         whisper_model_name: "large".to_string(),
         chunk_ms: 5_000,
         silence_hold_ms: 1_000,
-        mic_min_rms: 0.005,
-        system_min_rms: 0.005,
+        mic_min_rms: 0.01,
+        system_min_rms: 0.01,
         session_ready_timeout_seconds: 5.0,
         whisper_language: "en".to_string(),
-        whisper_use_context: true,
-        whisper_use_gpu: false,
+        whisper_context: true,
+        #[cfg(feature = "whisper-gpu")]
         whisper_flash_attn: false,
-        whisper_gpu_device: 0,
+        #[cfg(feature = "whisper-gpu")]
+        whisper_gpu_device: TEST_WHISPER_GPU_DEVICE,
     };
 
     let config = build_run_config(&args);
 
     assert_eq!(config.live.chunk_ms, 5_000);
     assert_eq!(config.live.silence_hold_ms, 1_000);
-    assert_eq!(config.live.mic_min_rms, 0.005);
-    assert_eq!(config.live.system_min_rms, 0.005);
+    assert_eq!(config.live.mic_min_rms, 0.01);
+    assert_eq!(config.live.system_min_rms, 0.01);
     assert_eq!(config.live.session_ready_timeout_seconds, 5.0);
     assert_eq!(config.whisper.whisper_model_name, "large");
     assert_eq!(config.whisper.whisper_language, "en");
     assert!(config.whisper.whisper_use_context);
-    assert!(!config.whisper.whisper_use_gpu);
+    assert_eq!(
+        config.whisper.whisper_use_gpu,
+        cfg!(feature = "whisper-gpu")
+    );
     assert!(!config.whisper.whisper_flash_attn);
     assert_eq!(config.whisper.whisper_gpu_device, 0);
     assert_ne!(Source::Mic, Source::System);
+}
+
+#[cfg(feature = "whisper-gpu")]
+#[test]
+fn run_cli_context_and_flash_attn_flags_map_to_expected_runtime_settings() {
+    let cli = Cli::try_parse_from([
+        "transcrivo",
+        "run",
+        "--token",
+        "token",
+        "--whisper-context=false",
+        "--whisper-flash-attn=true",
+    ])
+    .expect("cli args should parse");
+
+    let Command::Run(args) = cli.command else {
+        panic!("expected run command");
+    };
+
+    let config = build_run_config(&args);
+
+    assert!(!config.whisper.whisper_use_context);
+    assert_eq!(
+        config.whisper.whisper_use_gpu,
+        cfg!(feature = "whisper-gpu")
+    );
+    assert!(config.whisper.whisper_flash_attn);
+}
+
+#[test]
+fn run_cli_defaults_keep_context_enabled() {
+    let cli = Cli::try_parse_from(["transcrivo", "run", "--token", "token"])
+        .expect("cli args should parse");
+
+    let Command::Run(args) = cli.command else {
+        panic!("expected run command");
+    };
+
+    let config = build_run_config(&args);
+
+    assert!(config.whisper.whisper_use_context);
+    assert_eq!(
+        config.whisper.whisper_use_gpu,
+        cfg!(feature = "whisper-gpu")
+    );
+}
+
+#[test]
+fn run_cli_accepts_explicit_whisper_context_true() {
+    let cli = Cli::try_parse_from([
+        "transcrivo",
+        "run",
+        "--token",
+        "token",
+        "--whisper-context=true",
+    ])
+    .expect("cli args should parse");
+
+    let Command::Run(args) = cli.command else {
+        panic!("expected run command");
+    };
+
+    let config = build_run_config(&args);
+
+    assert!(config.whisper.whisper_use_context);
 }

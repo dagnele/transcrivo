@@ -5,6 +5,7 @@ pub mod linux;
 #[cfg(target_os = "linux")]
 pub mod linux_native;
 pub mod preprocess;
+pub mod segmenter;
 pub mod vad;
 pub mod windows;
 #[cfg(target_os = "windows")]
