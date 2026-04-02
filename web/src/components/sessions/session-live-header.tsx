@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Terminal } from "lucide-react";
+import { Download, MoreHorizontal, Terminal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
 import { getSessionLanguageLabel, getSessionTypeLabel } from "@/lib/session-config";
@@ -86,11 +92,11 @@ export function SessionLiveHeader({
   };
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border/60 px-6">
-      <div className="flex items-center gap-3">
+    <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-4 sm:px-6">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <SidebarTrigger aria-label="Toggle sessions panel" />
-        <h1 className="text-sm font-medium text-foreground">{session.title}</h1>
-        <span className="text-xs text-muted-foreground">
+        <h1 className="truncate text-sm font-medium text-foreground">{session.title}</h1>
+        <span className="hidden text-xs text-muted-foreground sm:inline">
           {getSessionTypeLabel(session.type)}
           {session.type === "coding" ? ` / ${getSessionLanguageLabel(session.language)}` : null}
         </span>
@@ -109,7 +115,7 @@ export function SessionLiveHeader({
           <TrialCountdown trialEndsAt={trialEndsAt} />
         ) : null}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="hidden items-center gap-2 sm:flex">
         <Button
           variant="ghost"
           size="sm"
@@ -129,6 +135,29 @@ export function SessionLiveHeader({
           CLI
         </Button>
       </div>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="sm:hidden"
+            aria-label="Open session actions"
+          >
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40 sm:hidden">
+          <DropdownMenuItem onClick={handleExport}>
+            <Download className="h-3.5 w-3.5" />
+            Export
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onOpenCli}>
+            <Terminal className="h-3.5 w-3.5" />
+            CLI
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </header>
   );
 }
