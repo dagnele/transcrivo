@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSubscription } from "@trpc/tanstack-react-query";
 
@@ -23,6 +23,7 @@ import {
 import type { Session, SessionStatus } from "@/lib/contracts/session";
 import { getConnectionLabel } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
 const LOCAL_TRIAL_DURATION_MS = 30 * 60 * 1000;
@@ -209,21 +210,7 @@ export function SessionLiveView({
 
   const toggleSolutionMutation = useMutation(trpc.session.toggleSolution.mutationOptions());
 
-  const isVerticalLayout = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < 768;
-  }, []);
-
-  const [verticalLayout, setVerticalLayout] = useState(isVerticalLayout);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setVerticalLayout(window.innerWidth < 768);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  const verticalLayout = useIsMobile();
 
   const handleToggleSolution = useCallback(
     (checked: boolean) => {
