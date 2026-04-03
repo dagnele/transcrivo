@@ -45,3 +45,14 @@ export function getSessionLanguageLabel(language: SessionLanguage | null) {
     language
   );
 }
+
+const solutionPaneLabels: Record<SessionType, string> = {
+  coding: "Solution",
+  system_design: "Design",
+  writing: "Draft",
+  meeting_summary: "Summary",
+};
+
+export function getSolutionPaneLabel(type: SessionType): string {
+  return solutionPaneLabels[type];
+}

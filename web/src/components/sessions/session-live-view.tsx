@@ -14,14 +14,13 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { Switch } from "@/components/ui/switch";
 import type { SessionEvent } from "@/lib/contracts/event";
 import {
   type SessionSolution,
   type SessionSolutionEvent,
 } from "@/lib/contracts/solution";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
-import { getConnectionLabel } from "@/lib/session-ui";
+import { downloadSessionMarkdown } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -111,6 +110,29 @@ function getInitialSolutionState(initialSolution: SessionSolution | null): Solut
     lastVersion: initialSolution.version,
     solution: initialSolution,
   };
+}
+
+function getInitialSolutionStateFromSession(
+  session: Session,
+  initialSolution: SessionSolution | null,
+): SolutionState {
+  const baseState = getInitialSolutionState(initialSolution);
+
+  if (session.solutionGenerationStatus === "debouncing") {
+    return {
+      ...baseState,
+      status: baseState.solution ? baseState.status : "generating",
+    };
+  }
+
+  if (session.solutionGenerationStatus === "generating") {
+    return {
+      ...baseState,
+      status: "generating",
+    };
+  }
+
+  return baseState;
 }
 
 function applySolutionEvent(
@@ -203,7 +225,9 @@ export function SessionLiveView({
     trialEndsAt: session.trialEndsAt,
   });
   const [transcriptLatestSequence, setTranscriptLatestSequence] = useState(0);
-  const [solutionState, setSolutionState] = useState(() => getInitialSolutionState(initialSolution));
+  const [solutionState, setSolutionState] = useState(() =>
+    getInitialSolutionStateFromSession(session, initialSolution),
+  );
   const [solutionEnabled, setSolutionEnabled] = useState(session.solutionEnabled);
   const toggleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialAfterVersion = initialSolution?.version;
@@ -292,6 +316,10 @@ export function SessionLiveView({
 
   const [transcriptItems, setTranscriptItems] = useState<TranscriptItem[]>([]);
 
+  const handleExport = useCallback(() => {
+    downloadSessionMarkdown(session, transcriptItems, solutionState.solution);
+  }, [session, transcriptItems, solutionState.solution]);
+
   return (
     <div className="flex h-full flex-col">
       <SessionLiveHeader
@@ -302,8 +330,7 @@ export function SessionLiveView({
         accessKind={lifecycleState.accessKind}
         trialEndsAt={lifecycleState.trialEndsAt}
         onOpenCli={() => setCliDialogOpen(true)}
-        transcriptItems={transcriptItems}
-        solution={solutionState.solution}
+        onExport={handleExport}
       />
 
       <ResizablePanelGroup
@@ -326,34 +353,17 @@ export function SessionLiveView({
         <ResizableHandle withHandle />
 
         <ResizablePanel defaultSize={50} minSize={25}>
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-center justify-between border-b border-border/40 px-6 py-3">
-              <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
-                Solution
-              </p>
-              <div className="flex items-center gap-3">
-                {solutionSubscription.status !== "pending" ? (
-                  <span className="text-[11px] text-muted-foreground/60 capitalize">
-                    {getConnectionLabel(solutionSubscription.status)}
-                  </span>
-                ) : null}
-                <label className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-muted-foreground/60">AI</span>
-                  <Switch size="sm" checked={solutionEnabled} onCheckedChange={handleToggleSolution} />
-                </label>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1">
-              <SolutionPane
-                state={{
-                  status: solutionState.status,
-                  solution: solutionState.solution,
-                  isCatchingUp,
-                  solutionEnabled,
-                }}
-              />
-            </div>
-          </div>
+          <SolutionPane
+            state={{
+              status: solutionState.status,
+              solution: solutionState.solution,
+              isCatchingUp,
+              solutionEnabled,
+            }}
+            sessionType={session.type}
+            subscriptionStatus={solutionSubscription.status}
+            onToggleSolution={handleToggleSolution}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
 

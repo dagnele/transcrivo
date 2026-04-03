@@ -28,7 +28,10 @@ import {
   subscribeToSessionEvents,
   subscribeToSessionSolutionEvents,
 } from "@/server/api/session-events";
-import { scheduleSessionSolutionGeneration } from "@/server/ai/session-solution-worker";
+import {
+  cancelSessionSolutionGeneration,
+  scheduleSessionSolutionGeneration,
+} from "@/server/ai/session-solution-worker";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { db } from "@/server/db/client";
 import { sessionEvents, sessionSolutions, sessions } from "@/server/db/schema";
@@ -65,6 +68,11 @@ export const sessionRouter = createTRPCRouter({
           language: input.language,
           status: "draft",
           solutionEnabled,
+          solutionGenerationStatus: "idle",
+          solutionGenerationStartedAt: null,
+          solutionGenerationDebounceUntil: null,
+          solutionGenerationMaxWaitUntil: null,
+          solutionGenerationSourceEventSequence: null,
           accessKind: null,
           trialEndsAt: null,
         })
@@ -392,13 +400,13 @@ export const sessionRouter = createTRPCRouter({
     .input(toggleSolutionInputSchema)
     .output(sessionSchema)
     .mutation(async ({ ctx, input }) => {
-      const [session] = await db
+      const [updatedSession] = await db
         .update(sessions)
         .set({ solutionEnabled: input.enabled })
         .where(and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)))
         .returning();
 
-      if (!session) {
+      if (!updatedSession) {
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Session not found.",
@@ -416,8 +424,21 @@ export const sessionRouter = createTRPCRouter({
         });
 
         if (latestFinalEvent) {
-          scheduleSessionSolutionGeneration(input.sessionId, latestFinalEvent.sequence);
+          await scheduleSessionSolutionGeneration(input.sessionId, latestFinalEvent.sequence);
         }
+      } else {
+        await cancelSessionSolutionGeneration(input.sessionId);
+      }
+
+      const session = await db.query.sessions.findFirst({
+        where: and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.session.user.id)),
+      });
+
+      if (!session) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Session not found.",
+        });
       }
 
       return sessionSchema.parse(session);

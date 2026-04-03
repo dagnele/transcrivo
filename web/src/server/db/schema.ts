@@ -21,6 +21,7 @@ import {
 import {
   sessionLanguageValues,
   sessionStatusValues,
+  sessionSolutionGenerationStatusValues,
   sessionTypeValues,
 } from "@/lib/contracts/session";
 import { account, session, user, verification } from "@/server/db/auth-schema";
@@ -32,6 +33,9 @@ export const sessionStatuses = sessionStatusValues;
 export const sessionLanguages = sessionLanguageValues;
 
 export const sessionTypes = sessionTypeValues;
+
+export const sessionSolutionGenerationStatuses =
+  sessionSolutionGenerationStatusValues;
 
 export const sessionEventTypes = sessionEventTypeValues;
 
@@ -72,6 +76,26 @@ export const sessions = pgTable(
       mode: "date",
     }),
     solutionEnabled: boolean("solution_enabled").notNull().default(false),
+    solutionGenerationStatus: text("solution_generation_status", {
+      enum: sessionSolutionGenerationStatuses,
+    })
+      .notNull()
+      .default("idle"),
+    solutionGenerationStartedAt: timestamp("solution_generation_started_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    solutionGenerationDebounceUntil: timestamp("solution_generation_debounce_until", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    solutionGenerationMaxWaitUntil: timestamp("solution_generation_max_wait_until", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    solutionGenerationSourceEventSequence: integer(
+      "solution_generation_source_event_sequence",
+    ),
     accessKind: text("access_kind", { enum: sessionAccessKinds }),
     trialEndsAt: timestamp("trial_ends_at", {
       withTimezone: true,

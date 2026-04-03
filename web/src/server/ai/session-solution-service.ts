@@ -23,6 +23,25 @@ import type { GenerateSessionSolutionInput } from "@/server/ai/session-solution/
 type OpenRouterClient = ReturnType<typeof createOpenRouterClient>;
 type OpenRouterModel = OpenRouterClient["model"];
 
+type SessionSolutionGenerationError = Error & {
+  provider: string;
+  model: string;
+  promptVersion: string;
+};
+
+function toGenerationError(
+  error: unknown,
+  config: { provider: string; modelId: string },
+): SessionSolutionGenerationError {
+  const base = error instanceof Error ? error : new Error("Unable to generate a solution.");
+
+  return Object.assign(base, {
+    provider: config.provider,
+    model: config.modelId,
+    promptVersion: solutionPromptVersion,
+  });
+}
+
 function buildStructuredMeetingSummaryMeta(summary: MeetingSummaryStructured) {
   return {
     structured: {
@@ -94,6 +113,7 @@ async function generateMarkdownSolution(
 export async function generateSessionSolution({
   session,
   transcriptEvents,
+  previousSolutionContent,
 }: GenerateSessionSolutionInput) {
   const summary = buildTranscriptContext(transcriptEvents);
 
@@ -102,13 +122,19 @@ export async function generateSessionSolution({
   }
 
   const { model, config } = createOpenRouterClient();
-  const prompt = buildSolutionPrompt(session, summary);
+  try {
+    const prompt = buildSolutionPrompt(session, summary, {
+      previousSolutionContent,
+    });
 
-  if (prompt.outputMode === "meeting_summary_object") {
-    return generateMeetingSummarySolution(model, config, prompt);
+    if (prompt.outputMode === "meeting_summary_object") {
+      return await generateMeetingSummarySolution(model, config, prompt);
+    }
+
+    return await generateMarkdownSolution(session.type, model, config, prompt);
+  } catch (error) {
+    throw toGenerationError(error, config);
   }
-
-  return generateMarkdownSolution(session.type, model, config, prompt);
 }
 
 export { buildSolutionPrompt } from "@/server/ai/session-solution/prompt";

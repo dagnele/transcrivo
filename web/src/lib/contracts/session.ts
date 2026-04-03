@@ -4,6 +4,12 @@ import { sessionAccessKindValues } from "@/lib/contracts/billing";
 
 export const sessionStatusValues = ["draft", "live", "ended", "failed", "expired"] as const;
 
+export const sessionSolutionGenerationStatusValues = [
+  "idle",
+  "debouncing",
+  "generating",
+] as const;
+
 export const sessionTypeValues = [
   "coding",
   "system_design",
@@ -29,6 +35,10 @@ export const sessionLanguageValues = [
 export const sessionIdSchema = z.string().trim().min(1).max(128);
 
 export const sessionStatusSchema = z.enum(sessionStatusValues);
+
+export const sessionSolutionGenerationStatusSchema = z.enum(
+  sessionSolutionGenerationStatusValues,
+);
 
 export const sessionTypeSchema = z.enum(sessionTypeValues);
 
@@ -73,6 +83,11 @@ export const sessionSchema = sessionBaseSchema
     id: sessionIdSchema,
     status: sessionStatusSchema,
     solutionEnabled: z.boolean(),
+    solutionGenerationStatus: sessionSolutionGenerationStatusSchema,
+    solutionGenerationStartedAt: z.date().nullable(),
+    solutionGenerationDebounceUntil: z.date().nullable(),
+    solutionGenerationMaxWaitUntil: z.date().nullable(),
+    solutionGenerationSourceEventSequence: z.number().int().nonnegative().nullable(),
     accessKind: sessionAccessKindSchema.nullable(),
     trialEndsAt: z.date().nullable(),
     createdAt: z.date(),
@@ -120,6 +135,9 @@ export const paginatedSessionsSchema = z.object({
 });
 
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
+export type SessionSolutionGenerationStatus = z.infer<
+  typeof sessionSolutionGenerationStatusSchema
+>;
 export type SessionType = z.infer<typeof sessionTypeSchema>;
 export type SessionLanguage = z.infer<typeof sessionLanguageSchema>;
 export type SessionAccessKind = z.infer<typeof sessionAccessKindSchema>;

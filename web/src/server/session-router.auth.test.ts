@@ -65,19 +65,6 @@ mock.module("@/server/db/client", () => ({
   db: dbMock,
 }));
 
-mock.module("@/server/api/session-events", () => ({
-  subscribeToSessionEvents: async function* () {
-    return;
-  },
-  subscribeToSessionSolutionEvents: async function* () {
-    return;
-  },
-}));
-
-mock.module("@/server/ai/session-solution-worker", () => ({
-  scheduleSessionSolutionGeneration: () => undefined,
-}));
-
 mock.module("@/server/token", () => ({
   CLI_TOKEN_LIFETIME_MS: 90 * 60 * 1000,
   signSessionToken: async () => "signed-token",

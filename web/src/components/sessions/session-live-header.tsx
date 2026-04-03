@@ -16,9 +16,6 @@ import { getSessionLanguageLabel, getSessionTypeLabel } from "@/lib/session-conf
 import { cn } from "@/lib/utils";
 
 import { SessionStatusBadge } from "./session-status-badge";
-import type { TranscriptItem } from "./session-transcript";
-import type { SessionSolution } from "@/lib/contracts/solution";
-import { downloadSessionMarkdown } from "@/lib/session-ui";
 
 type SessionLiveHeaderProps = {
   session: Session;
@@ -28,8 +25,7 @@ type SessionLiveHeaderProps = {
   accessKind: string | null;
   trialEndsAt: Date | null;
   onOpenCli: () => void;
-  transcriptItems?: TranscriptItem[];
-  solution?: SessionSolution | null;
+  onExport: () => void;
 };
 
 function formatTrialRemaining(ms: number): string {
@@ -81,15 +77,10 @@ export function SessionLiveHeader({
   accessKind,
   trialEndsAt,
   onOpenCli,
-  transcriptItems = [],
-  solution = null,
+  onExport,
 }: SessionLiveHeaderProps) {
   const isTrial = accessKind === "trial";
   const showTrialCountdown = isTrial && trialEndsAt && status !== "draft";
-
-  const handleExport = () => {
-    downloadSessionMarkdown(session, transcriptItems, solution);
-  };
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/60 px-4 sm:px-6">
@@ -122,7 +113,7 @@ export function SessionLiveHeader({
           variant="ghost"
           size="sm"
           className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
-          onClick={handleExport}
+          onClick={onExport}
         >
           <Download className="h-3 w-3" />
           Export
@@ -150,7 +141,7 @@ export function SessionLiveHeader({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40 sm:hidden">
-          <DropdownMenuItem onClick={handleExport}>
+          <DropdownMenuItem onClick={onExport}>
             <Download className="h-3.5 w-3.5" />
             Export
           </DropdownMenuItem>

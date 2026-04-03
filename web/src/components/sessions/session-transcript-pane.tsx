@@ -242,7 +242,7 @@ export function SessionTranscriptPane({
         </div>
       </div>
 
-      <div className="relative min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <ScrollNav
           onUp={scrollTowardOlder}
           onDown={() => scrollToLatest("smooth")}
@@ -273,7 +273,13 @@ export function SessionTranscriptPane({
                   const isYou = entry.source === "mic";
 
                   return (
-                    <div key={entry.id}>
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        "border-l-2 pl-3",
+                        isYou ? "border-primary/40" : "border-border/30",
+                      )}
+                    >
                       <div className="flex items-baseline gap-2">
                         <span
                           className={cn(

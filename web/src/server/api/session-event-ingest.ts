@@ -299,7 +299,7 @@ export async function ingestSessionEvent(input: unknown) {
     });
 
     if (currentSession?.solutionEnabled !== false) {
-      scheduleSessionSolutionGeneration(parsedEvent.sessionId, parsedEvent.sequence);
+      await scheduleSessionSolutionGeneration(parsedEvent.sessionId, parsedEvent.sequence);
     }
   }
 
