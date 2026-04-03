@@ -139,7 +139,7 @@ async function runGeneration(sessionId: string, requestedSequence: number) {
           provider: generated.provider,
           model: generated.model,
           promptVersion: generated.promptVersion,
-          meta: null,
+          meta: generated.meta,
         })
         .returning();
 
