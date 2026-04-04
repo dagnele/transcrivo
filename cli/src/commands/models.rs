@@ -19,8 +19,13 @@ pub struct ModelsArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ModelsCommand {
+    #[command(about = "List supported whisper.cpp model names")]
     List,
+
+    #[command(about = "Show which known models are installed locally")]
     Status,
+
+    #[command(about = "Download a whisper.cpp model into the local models directory")]
     Download(DownloadArgs),
 }
 
