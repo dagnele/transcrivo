@@ -10,9 +10,7 @@ use tokio_tungstenite::{
 };
 
 use transcrivo_cli_rs::transport::protocol::{MessageEnvelope, MessageType};
-use transcrivo_cli_rs::transport::{
-    BackendWebSocketClient, DEFAULT_SESSION_READY_TIMEOUT_SECONDS,
-};
+use transcrivo_cli_rs::transport::{BackendWebSocketClient, DEFAULT_SESSION_READY_TIMEOUT_SECONDS};
 
 struct AuthHeaderRecorder {
     auth_header: Arc<Mutex<Option<String>>>,
@@ -457,5 +455,8 @@ async fn wait_for_ready_rejects_non_ok_status() {
     client.close().await.expect("close client");
     server.await.expect("join server");
 
-    assert_eq!(error, "backend did not accept session as ready: status=pending");
+    assert_eq!(
+        error,
+        "backend did not accept session as ready: status=pending"
+    );
 }

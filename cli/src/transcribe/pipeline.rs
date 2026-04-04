@@ -123,7 +123,10 @@ impl TranscriptPipeline {
             })
     }
 
-    fn process_segments(&mut self, segments: &[TranscriptSegment]) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn process_segments(
+        &mut self,
+        segments: &[TranscriptSegment],
+    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         if !self.emit_partial_events {
             return self.segments_to_messages(segments);
         }
@@ -142,7 +145,10 @@ impl TranscriptPipeline {
         self.pending_utterance.is_some()
     }
 
-    fn segments_to_messages(&self, segments: &[TranscriptSegment]) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn segments_to_messages(
+        &self,
+        segments: &[TranscriptSegment],
+    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let mut messages = Vec::new();
         for segment in segments {
             if segment.is_partial && !self.emit_partial_events {
@@ -179,7 +185,10 @@ impl TranscriptPipeline {
         Ok(messages)
     }
 
-    fn segments_to_utterance_messages(&mut self, segments: &[TranscriptSegment]) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
+    fn segments_to_utterance_messages(
+        &mut self,
+        segments: &[TranscriptSegment],
+    ) -> Result<Vec<MessageEnvelope>, TranscriptionError> {
         let meaningful_segments = segments
             .iter()
             .filter(|segment| is_meaningful_transcript_text(&segment.text))
@@ -377,9 +386,7 @@ fn combine_segments(segments: &[TranscriptSegment]) -> PendingUtterance {
 
 fn is_meaningful_transcript_text(text: &str) -> bool {
     let trimmed = text.trim();
-    !trimmed.is_empty()
-        && trimmed != "[BLANK_AUDIO]"
-        && trimmed.chars().any(char::is_alphanumeric)
+    !trimmed.is_empty() && trimmed != "[BLANK_AUDIO]" && trimmed.chars().any(char::is_alphanumeric)
 }
 
 fn split_text_for_cutoff(text: &str, max_chars: usize) -> Option<ForcedCut> {

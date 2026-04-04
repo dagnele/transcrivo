@@ -2,7 +2,7 @@ use tracing::{debug, error};
 
 use crate::audio::segmenter::{AudioSegment, SegmentBoundary};
 use crate::session::models::Source;
-use crate::transcribe::whisper_cpp::{TranscriptionError, TranscriptSegment, WhisperCppAdapter};
+use crate::transcribe::whisper_cpp::{TranscriptSegment, TranscriptionError, WhisperCppAdapter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscriptChunk {
@@ -100,7 +100,7 @@ fn transcript_chunk_from_segment(
 
 #[cfg(test)]
 mod tests {
-    use super::{TranscriptBatch, TranscriptChunk, TranscriberStage};
+    use super::{TranscriberStage, TranscriptBatch, TranscriptChunk};
     use crate::audio::segmenter::{AudioSegment, SegmentBoundary};
     use crate::session::models::Source;
     use crate::transcribe::whisper_cpp::{
@@ -189,7 +189,10 @@ mod tests {
         assert_eq!(transcript.source, Source::Mic);
         assert_eq!(transcript.audio_boundary, SegmentBoundary::MaxDuration);
         assert_eq!(transcript.chunks[0].source, Source::Mic);
-        assert_eq!(transcript.chunks[0].audio_boundary, SegmentBoundary::MaxDuration);
+        assert_eq!(
+            transcript.chunks[0].audio_boundary,
+            SegmentBoundary::MaxDuration
+        );
         assert_eq!(transcript.chunks[0].text, "hello world");
     }
 
@@ -237,8 +240,14 @@ mod tests {
 
         assert_eq!(transcript.chunks.len(), 2);
         assert_eq!(transcript.audio_boundary, SegmentBoundary::Silence);
-        assert_eq!(transcript.chunks[0].audio_boundary, SegmentBoundary::Silence);
-        assert_eq!(transcript.chunks[1].audio_boundary, SegmentBoundary::Silence);
+        assert_eq!(
+            transcript.chunks[0].audio_boundary,
+            SegmentBoundary::Silence
+        );
+        assert_eq!(
+            transcript.chunks[1].audio_boundary,
+            SegmentBoundary::Silence
+        );
         assert_eq!(transcript.chunks[0].start_ms, 100);
         assert_eq!(transcript.chunks[1].end_ms, 700);
     }

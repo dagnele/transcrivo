@@ -32,9 +32,9 @@ mod imp {
     use tokio::sync::mpsc::UnboundedSender;
     use windows::core::PCWSTR;
     use windows::Win32::Media::Audio::{
-        AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
-        IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator, WAVEFORMATEX,
-        WAVEFORMATEXTENSIBLE, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_E_SERVICE_NOT_RUNNING,
+        IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator,
+        AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_E_DEVICE_INVALIDATED, AUDCLNT_E_SERVICE_NOT_RUNNING,
+        AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
     };
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
@@ -66,13 +66,9 @@ mod imp {
             let config = config.clone();
 
             let join_handle = std::thread::spawn(move || {
-                if let Err(error) = run_capture_thread(
-                    spec,
-                    config,
-                    audio_tx,
-                    stop_for_thread,
-                    startup_tx.clone(),
-                ) {
+                if let Err(error) =
+                    run_capture_thread(spec, config, audio_tx, stop_for_thread, startup_tx.clone())
+                {
                     let _ = startup_tx.send(Err(error));
                 }
             });
@@ -95,7 +91,10 @@ mod imp {
             }
         }
 
-        pub async fn read_chunk(&mut self, config: &CaptureConfig) -> Result<PcmChunk, CaptureError> {
+        pub async fn read_chunk(
+            &mut self,
+            config: &CaptureConfig,
+        ) -> Result<PcmChunk, CaptureError> {
             let target_size = config.bytes_per_chunk();
             while self.pending.len() < target_size {
                 let Some(bytes) = self.rx.recv().await else {
@@ -197,8 +196,8 @@ mod imp {
                 .map_err(|error| CaptureError::SpawnFailed(error.to_string()))?
         };
 
-        let format_info = unsafe { read_wave_format(mix_format) }
-            .map_err(CaptureError::SpawnFailed)?;
+        let format_info =
+            unsafe { read_wave_format(mix_format) }.map_err(CaptureError::SpawnFailed)?;
 
         let stream_flags = if spec.loopback {
             AUDCLNT_STREAMFLAGS_LOOPBACK
@@ -275,13 +274,7 @@ mod imp {
             let mut flags = 0;
             unsafe {
                 capture_client
-                    .GetBuffer(
-                        &mut data_ptr,
-                        &mut frames_available,
-                        &mut flags,
-                        None,
-                        None,
-                    )
+                    .GetBuffer(&mut data_ptr, &mut frames_available, &mut flags, None, None)
                     .map_err(|error| map_capture_error("failed to read WASAPI buffer", error))?;
             }
 
@@ -313,7 +306,9 @@ mod imp {
             pending_output.extend_from_slice(&packet);
 
             while pending_output.len() >= config.bytes_per_chunk() {
-                let bytes = pending_output.drain(..config.bytes_per_chunk()).collect::<Vec<_>>();
+                let bytes = pending_output
+                    .drain(..config.bytes_per_chunk())
+                    .collect::<Vec<_>>();
                 if audio_tx.send(bytes).is_err() {
                     return Ok(());
                 }
@@ -357,7 +352,9 @@ mod imp {
             return Err("WASAPI mix format is invalid".to_string());
         }
 
-        let sample_format = if u32::from(w_format_tag) == windows::Win32::Media::Audio::WAVE_FORMAT_PCM {
+        let sample_format = if u32::from(w_format_tag)
+            == windows::Win32::Media::Audio::WAVE_FORMAT_PCM
+        {
             if bits_per_sample != 16 {
                 return Err(format!(
                     "unsupported PCM bits per sample: {bits_per_sample}; expected 16"
@@ -374,14 +371,17 @@ mod imp {
         } else if u32::from(w_format_tag) == 0xfffe {
             let extensible = std::ptr::read_unaligned(format_ptr as *const WAVEFORMATEXTENSIBLE);
             let sub_format = extensible.SubFormat;
-            if sub_format == windows::core::GUID::from_u128(0x00000001_0000_0010_8000_00aa00389b71) {
+            if sub_format == windows::core::GUID::from_u128(0x00000001_0000_0010_8000_00aa00389b71)
+            {
                 if bits_per_sample != 16 {
                     return Err(format!(
                         "unsupported extensible PCM bits per sample: {bits_per_sample}; expected 16"
                     ));
                 }
                 SampleFormat::Pcm16
-            } else if sub_format == windows::core::GUID::from_u128(0x00000003_0000_0010_8000_00aa00389b71) {
+            } else if sub_format
+                == windows::core::GUID::from_u128(0x00000003_0000_0010_8000_00aa00389b71)
+            {
                 if bits_per_sample != 32 {
                     return Err(format!(
                         "unsupported extensible float bits per sample: {bits_per_sample}; expected 32"
@@ -543,7 +543,9 @@ mod imp {
     }
 
     fn map_capture_error(context: &str, error: windows::core::Error) -> CaptureError {
-        if error.code() == AUDCLNT_E_DEVICE_INVALIDATED || error.code() == AUDCLNT_E_SERVICE_NOT_RUNNING {
+        if error.code() == AUDCLNT_E_DEVICE_INVALIDATED
+            || error.code() == AUDCLNT_E_SERVICE_NOT_RUNNING
+        {
             CaptureError::ReadFailed(format!("{context}: {}", error.message()))
         } else {
             CaptureError::ReadFailed(format!("{context}: {error}"))

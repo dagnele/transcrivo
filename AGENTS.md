@@ -13,7 +13,7 @@
 - Web install/dev/build: `cd web && bun install`, `bun dev`, `bun run build`, `bun start`
 - Web checks: `cd web && bun run lint`, `bunx tsc --noEmit`, `bunx eslint src/app/page.tsx`
 - Web db: `cd web && bun run db:generate`, `bun run db:migrate`, `bun run db:push`, `bun run db:studio`
-- CLI build/checks: `cd cli && cargo build`, `cargo fmt --all`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`
+- CLI build/checks: `cd cli && cargo build`, `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`
 - CLI help/runtime: `cd cli && cargo run -- --help`, `cargo run -- devices`, `cargo run -- models list`, `cargo run -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en`
 - Single Rust test by name: `cd cli && cargo test backend_url_accepts_websocket_urls`
 - Single integration file: `cd cli && cargo test --test websocket_client`

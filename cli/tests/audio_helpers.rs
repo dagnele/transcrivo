@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use serde_json::json;
 use transcrivo_cli_rs::audio::capture::{pcm16le_from_f32_frames, CaptureSource};
 use transcrivo_cli_rs::audio::devices::{
     format_device_inventory, get_default_microphone, get_default_system_source,
@@ -12,8 +14,6 @@ use transcrivo_cli_rs::audio::windows;
 use transcrivo_cli_rs::audio::windows_native;
 #[cfg(target_os = "linux")]
 use transcrivo_cli_rs::audio::{linux, linux_native};
-#[cfg(target_os = "linux")]
-use serde_json::json;
 
 #[test]
 fn pcm16le_conversion_clips_and_scales() {

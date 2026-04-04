@@ -1,6 +1,28 @@
 use clap::{Parser, Subcommand};
+use tracing::Level;
 
 use crate::commands;
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
+impl LogLevel {
+    pub fn as_level(self) -> Level {
+        match self {
+            Self::Error => Level::ERROR,
+            Self::Warn => Level::WARN,
+            Self::Info => Level::INFO,
+            Self::Debug => Level::DEBUG,
+            Self::Trace => Level::TRACE,
+        }
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "transcrivo")]
@@ -11,8 +33,8 @@ use crate::commands;
 )]
 #[command(propagate_version = true)]
 pub struct Cli {
-    #[arg(long, global = true, help = "Enable verbose logging")]
-    pub verbose: bool,
+    #[arg(long, global = true, value_enum, default_value_t = LogLevel::Info, help = "Set the log level")]
+    pub log_level: LogLevel,
 
     #[command(subcommand)]
     pub command: Command,

@@ -1,6 +1,6 @@
 [package]
 name = "transcrivo-cli-rs"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 default-run = "transcrivo"
 
@@ -27,6 +27,7 @@ thiserror = "2.0"
 tokio = { version = "1.45", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 tracing = "0.1"
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1.18", features = ["v4", "v7"] }
 whisper-rs = { version = "0.16", default-features = false, features = ["tracing_backend"] }

@@ -7,7 +7,7 @@ Thanks for your interest in improving Transcrivo.
 - Keep changes focused and follow the existing project structure and style.
 - For behavior or protocol changes, read `specs/` first.
 - For web changes, run `bun run lint`, `bunx tsc --noEmit`, and `bun run build` from `web/` when relevant.
-- For CLI changes, run `cargo fmt --all`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` from `cli/` when relevant.
+- For CLI changes, run `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, and `cargo test` from `cli/` when relevant. GPU-specific feature builds may require platform toolchains such as Vulkan SDK or CUDA.
 
 ## Contribution Terms
 

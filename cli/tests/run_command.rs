@@ -82,9 +82,7 @@ fn build_session_start_message_includes_selected_device_ids() {
         session_ready_timeout_seconds: 5.0,
         whisper_language: "en".to_string(),
         whisper_context: true,
-        #[cfg(feature = "whisper-gpu")]
         whisper_flash_attn: false,
-        #[cfg(feature = "whisper-gpu")]
         whisper_gpu_device: TEST_WHISPER_GPU_DEVICE,
     });
 
@@ -125,9 +123,7 @@ fn build_run_config_preserves_runtime_and_whisper_options() {
         session_ready_timeout_seconds: 12.5,
         whisper_language: "it".to_string(),
         whisper_context: true,
-        #[cfg(feature = "whisper-gpu")]
         whisper_flash_attn: true,
-        #[cfg(feature = "whisper-gpu")]
         whisper_gpu_device: 2,
     };
 
@@ -145,14 +141,8 @@ fn build_run_config_preserves_runtime_and_whisper_options() {
         config.whisper.whisper_use_gpu,
         cfg!(feature = "whisper-gpu")
     );
-    assert_eq!(
-        config.whisper.whisper_flash_attn,
-        cfg!(feature = "whisper-gpu")
-    );
-    assert_eq!(
-        config.whisper.whisper_gpu_device,
-        if cfg!(feature = "whisper-gpu") { 2 } else { 0 }
-    );
+    assert!(config.whisper.whisper_flash_attn);
+    assert_eq!(config.whisper.whisper_gpu_device, 2);
 }
 
 #[test]
@@ -170,9 +160,7 @@ fn build_run_config_defaults_are_source_agnostic() {
         session_ready_timeout_seconds: 5.0,
         whisper_language: "en".to_string(),
         whisper_context: true,
-        #[cfg(feature = "whisper-gpu")]
         whisper_flash_attn: false,
-        #[cfg(feature = "whisper-gpu")]
         whisper_gpu_device: TEST_WHISPER_GPU_DEVICE,
     };
 

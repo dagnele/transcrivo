@@ -200,8 +200,7 @@ pub async fn execute(args: &RunArgs) -> Result<()> {
 
     client.connect().await?;
 
-    let start_message =
-        build_session_start_message(&mut session, &selected_devices, &run_config)?;
+    let start_message = build_session_start_message(&mut session, &selected_devices, &run_config)?;
 
     info!(
         mic_device_id = %selected_devices.mic_device_id,
@@ -381,11 +380,7 @@ pub async fn run_live_session_with_adapter_factory<F>(
     adapter_factory: F,
 ) -> Result<()>
 where
-    F: Fn(
-            Source,
-            &RunConfig,
-            &ShutdownController,
-        ) -> Result<WhisperCppAdapter, TranscriptionError>
+    F: Fn(Source, &RunConfig, &ShutdownController) -> Result<WhisperCppAdapter, TranscriptionError>
         + Copy,
 {
     let shared_session = Arc::new(session.clone());
@@ -693,30 +688,32 @@ async fn inference_worker(
         let mut messages = Vec::new();
 
         match request {
-            InferenceRequest::Segment(segment) => match transcriber.transcribe_batch(&segment).await {
-                Ok(batch) => match publisher.publish_batch(&batch) {
-                    Ok(batch_messages) => messages.extend(batch_messages),
+            InferenceRequest::Segment(segment) => {
+                match transcriber.transcribe_batch(&segment).await {
+                    Ok(batch) => match publisher.publish_batch(&batch) {
+                        Ok(batch_messages) => messages.extend(batch_messages),
+                        Err(error) => {
+                            error!(
+                                source = ?source,
+                                boundary = ?batch.audio_boundary,
+                                error = %error,
+                                "live publisher stage failed"
+                            );
+                        }
+                    },
+                    Err(TranscriptionError::Aborted) => break,
                     Err(error) => {
                         error!(
                             source = ?source,
-                            boundary = ?batch.audio_boundary,
+                            start_ms = segment.start_ms,
+                            end_ms = segment.end_ms,
+                            boundary = ?segment.boundary,
                             error = %error,
-                            "live publisher stage failed"
+                            "live inference failed"
                         );
                     }
-                },
-                Err(TranscriptionError::Aborted) => break,
-                Err(error) => {
-                    error!(
-                        source = ?source,
-                        start_ms = segment.start_ms,
-                        end_ms = segment.end_ms,
-                        boundary = ?segment.boundary,
-                        error = %error,
-                        "live inference failed"
-                    );
                 }
-            },
+            }
             InferenceRequest::Flush => {
                 debug!(source = ?source, "flushing pending transcript utterance");
                 match publisher.publish_batch(&crate::transcribe::stage::TranscriptBatch {
@@ -801,14 +798,8 @@ async fn poll_backend_messages(
             Ok(Ok(message)) => message,
             Ok(Err(WebSocketClientError::ConnectionClosed)) => {
                 info!("backend connection closed; attempting reconnect");
-                reconnect_backend_session(
-                    session,
-                    client,
-                    selected_devices,
-                    shutdown,
-                    run_config,
-                )
-                .await?;
+                reconnect_backend_session(session, client, selected_devices, shutdown, run_config)
+                    .await?;
                 return Ok(());
             }
             Ok(Err(error)) if shutdown.is_requested() => {
@@ -817,14 +808,8 @@ async fn poll_backend_messages(
             }
             Ok(Err(error)) if is_reconnectable_websocket_error(&error) => {
                 warn!(error = %error, "backend receive failed; attempting reconnect");
-                reconnect_backend_session(
-                    session,
-                    client,
-                    selected_devices,
-                    shutdown,
-                    run_config,
-                )
-                .await?;
+                reconnect_backend_session(session, client, selected_devices, shutdown, run_config)
+                    .await?;
                 return Ok(());
             }
             Ok(Err(error)) => return Err(error.into()),
@@ -867,14 +852,7 @@ async fn send_message_with_reconnect(
         Ok(()) => Ok(()),
         Err(error) if is_reconnectable_websocket_error(&error) && !shutdown.is_requested() => {
             warn!(error = %error, "backend send failed; attempting reconnect");
-            reconnect_backend_session(
-                session,
-                client,
-                selected_devices,
-                shutdown,
-                run_config,
-            )
-            .await
+            reconnect_backend_session(session, client, selected_devices, shutdown, run_config).await
         }
         Err(error) => Err(error.into()),
     }
@@ -897,19 +875,14 @@ async fn reconnect_backend_session(
 
         let _ = client.close().await;
 
-        match reconnect_backend_session_once(
-            session,
-            client,
-            selected_devices,
-            run_config,
-        )
-        .await
-        {
+        match reconnect_backend_session_once(session, client, selected_devices, run_config).await {
             Ok(()) => {
                 info!("backend session ready after reconnect");
                 return Ok(());
             }
-            Err(error) if is_reconnectable_reconnect_error(&error) && Instant::now() < reconnect_deadline =>
+            Err(error)
+                if is_reconnectable_reconnect_error(&error)
+                    && Instant::now() < reconnect_deadline =>
             {
                 warn!(
                     error = %error,
@@ -925,7 +898,7 @@ async fn reconnect_backend_session(
 
                 backoff = (backoff * 2).min(RECONNECT_MAX_BACKOFF);
             }
-            Err(error) => return Err(error.into()),
+            Err(error) => return Err(error),
         }
     }
 }
@@ -1117,11 +1090,7 @@ async fn build_source_runtime(
     Ok((
         SourceRuntime {
             source,
-            segmenter: Segmenter::new(
-                source,
-                device_id,
-                live_config.segmenter_config(source),
-            ),
+            segmenter: Segmenter::new(source, device_id, live_config.segmenter_config(source)),
             inference_tx,
         },
         inference_rx,
@@ -1260,7 +1229,6 @@ mod tests {
         assert_eq!(pcm.frame_count, 3);
         assert_eq!(pcm.pcm.len(), 6);
     }
-
 }
 #[cfg(feature = "whisper-gpu")]
 const DEFAULT_WHISPER_GPU_DEVICE: i32 = 0;

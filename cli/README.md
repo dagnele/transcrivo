@@ -19,6 +19,22 @@ cargo run -- models --help
 cargo run -- run --help
 ```
 
+## Logging
+
+The CLI always writes tracing logs to a rotating file.
+
+- Linux: `$XDG_DATA_HOME/transcrivo/logs` or `~/.local/share/transcrivo/logs`
+- Windows: `%LOCALAPPDATA%\Transcrivo\logs`
+- Rotation: daily
+- Retention: 7 log files
+
+Use `--log-level` to control verbosity:
+
+```bash
+cargo run -- --log-level debug devices
+cargo run -- --log-level trace run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
+```
+
 ## Mock backend
 
 Start the mock websocket backend from `cli/`:
@@ -84,6 +100,7 @@ From `cli/`:
 
 ```bash
 cargo check
+cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
@@ -179,6 +196,7 @@ For non-Vulkan checks from `cli/`:
 
 ```powershell
 cargo check
+cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 

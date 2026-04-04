@@ -1,7 +1,7 @@
+use serde_json::json;
 use transcrivo_cli_rs::transport::protocol::{
     parse_message, serialize_message, MessageEnvelope, MessageType, ProtocolError,
 };
-use serde_json::json;
 
 #[test]
 fn serializes_minimal_message_envelope() {

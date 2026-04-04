@@ -12,7 +12,7 @@ use clap::Parser;
 
 pub async fn run() -> Result<()> {
     let cli = cli::Cli::parse();
-    logging::config::init_logging(cli.verbose)?;
+    logging::config::init_logging(cli.log_level)?;
 
     match &cli.command {
         cli::Command::Devices(args) => commands::devices::execute(args).await,

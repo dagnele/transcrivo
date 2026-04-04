@@ -162,9 +162,10 @@ async fn pipeline_drops_partials_by_default() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, false);
 
-    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(Source::System, 1000, 2000))
-        .await
-        .expect("pipeline should transcribe");
+    let messages =
+        pipeline_transcribe_chunk(&mut pipeline, &build_chunk(Source::System, 1000, 2000))
+            .await
+            .expect("pipeline should transcribe");
 
     assert!(messages.is_empty());
 }
@@ -180,9 +181,10 @@ async fn pipeline_can_emit_partials_when_enabled() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(Source::System, 1000, 2000))
-        .await
-        .expect("pipeline should transcribe");
+    let messages =
+        pipeline_transcribe_chunk(&mut pipeline, &build_chunk(Source::System, 1000, 2000))
+            .await
+            .expect("pipeline should transcribe");
 
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message_type, MessageType::TranscriptPartial);
@@ -200,9 +202,10 @@ async fn pipeline_flush_pending_finalizes_last_partial() {
     }]]);
     let mut pipeline = TranscriptPipeline::new(Source::System, session, adapter, true);
 
-    let partial_messages = pipeline_transcribe_chunk(&mut pipeline, &build_chunk(Source::System, 0, 1000))
-        .await
-        .expect("partial should emit");
+    let partial_messages =
+        pipeline_transcribe_chunk(&mut pipeline, &build_chunk(Source::System, 0, 1000))
+            .await
+            .expect("partial should emit");
     let final_messages = pipeline.flush_pending().expect("flush should work");
 
     assert_eq!(partial_messages.len(), 1);
@@ -250,10 +253,19 @@ async fn pipeline_forced_cutoff_does_not_move_end_ms_backwards_for_existing_utte
             .expect("second chunk should trigger cutoff");
 
     assert_eq!(first_messages.len(), 1);
-    assert_eq!(first_messages[0].message_type, MessageType::TranscriptPartial);
+    assert_eq!(
+        first_messages[0].message_type,
+        MessageType::TranscriptPartial
+    );
     assert_eq!(second_messages.len(), 2);
-    assert_eq!(second_messages[0].message_type, MessageType::TranscriptFinal);
-    assert_eq!(second_messages[1].message_type, MessageType::TranscriptPartial);
+    assert_eq!(
+        second_messages[0].message_type,
+        MessageType::TranscriptFinal
+    );
+    assert_eq!(
+        second_messages[1].message_type,
+        MessageType::TranscriptPartial
+    );
     assert_eq!(
         first_messages[0].payload["utterance_id"],
         second_messages[0].payload["utterance_id"]
