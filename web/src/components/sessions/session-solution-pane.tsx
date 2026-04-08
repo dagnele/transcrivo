@@ -35,18 +35,23 @@ export function SolutionPane({ state, sessionType, subscriptionStatus, onToggleS
   const hasRenderableSolution =
     solution !== null && solution.content.trim().length > 0;
   const [sectionIndex, setSectionIndex] = useState(0);
+  const idleMessage = state.solutionEnabled ? "Waiting for transcript" : "AI generation is off";
+  const showEmptyState = state.status === "idle";
+  const showInitialLoading = state.status === "generating" && !hasRenderableSolution;
+  const showUpdatingBanner = state.status === "generating" && hasRenderableSolution;
+  const showSolution = hasRenderableSolution;
+  const showDraftBadge = state.status === "draft";
+  const showCatchingUp = state.isCatchingUp && state.status !== "error" && hasRenderableSolution;
+  const showInlineError = state.status === "error" && hasRenderableSolution;
+  const showEmptyError = state.status === "error" && !hasRenderableSolution;
 
   const sectionCount = useMemo(() => {
     if (!hasRenderableSolution) {
       return 0;
     }
 
-    if (!solution) {
-      return 0;
-    }
-
     return (solution.content.match(/^#{1,3}\s+/gm) ?? []).length;
-  }, [hasRenderableSolution, solution]);
+  }, [hasRenderableSolution, solution?.content]);
   const currentSectionIndex = Math.min(sectionIndex, Math.max(sectionCount - 1, 0));
 
   useEffect(() => {
@@ -146,39 +151,39 @@ export function SolutionPane({ state, sessionType, subscriptionStatus, onToggleS
           ref={scrollContainerRef}
           className="min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 sm:py-8"
         >
-          {state.status === "idle" ? (
+          {showEmptyState ? (
             <PaneEmptyState
               icon={Sparkles}
-              message={state.solutionEnabled ? "Waiting for transcript" : "AI generation is off"}
+              message={idleMessage}
             />
           ) : null}
 
-          {state.status === "generating" && !state.solution ? (
+          {showInitialLoading ? (
             <div className="flex h-full items-center justify-center">
               <PaneLoadingDots />
             </div>
           ) : null}
 
-          {state.status === "generating" && hasRenderableSolution ? (
+          {showUpdatingBanner ? (
             <div className="sticky top-0 z-10 flex items-center justify-center border-b border-border/20 bg-background/80 py-2 backdrop-blur-sm">
               <PaneLoadingDots size="sm" />
               <span className="ml-2 text-[11px] text-muted-foreground">Updating...</span>
             </div>
           ) : null}
 
-          {hasRenderableSolution && solution ? (
+          {showSolution ? (
             <div>
-              {state.status === "draft" ? (
+              {showDraftBadge ? (
                 <Badge variant="outline" className="mb-4 text-amber-600">
                   Draft
                 </Badge>
               ) : null}
-              {state.isCatchingUp && state.status !== "error" ? (
+              {showCatchingUp ? (
                 <p className="mb-4 text-xs text-muted-foreground">
                   Catching up to transcript...
                 </p>
               ) : null}
-              {state.status === "error" ? (
+              {showInlineError ? (
                 <div className="mb-4 flex items-center gap-2 text-xs text-destructive">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   <span>
@@ -190,7 +195,7 @@ export function SolutionPane({ state, sessionType, subscriptionStatus, onToggleS
             </div>
           ) : null}
 
-          {state.status === "error" && !hasRenderableSolution ? (
+          {showEmptyError ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <AlertCircle className="h-5 w-5 text-destructive/60" />
               <p className="mt-4 text-sm text-muted-foreground">
