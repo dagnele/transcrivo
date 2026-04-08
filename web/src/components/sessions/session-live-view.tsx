@@ -47,20 +47,44 @@ type SolutionState = {
   solution: SessionSolution | null;
 };
 
+function parseDateOrNull(value: unknown): Date | null {
+  if (value instanceof Date) return value;
+  if (typeof value === "string") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
 function applyLifecycleEvent(state: LifecycleState, event: SessionEvent): LifecycleState {
   if (event.type === "session.started") {
+    const payload = event.payload as Record<string, unknown> | undefined;
+    const payloadAccessKind =
+      typeof payload?.accessKind === "string" ? payload.accessKind : null;
+    const payloadStartedAt = parseDateOrNull(payload?.startedAt);
+    const payloadExpiresAt = parseDateOrNull(payload?.expiresAt);
+    const payloadTrialEndsAt = parseDateOrNull(payload?.trialEndsAt);
+
+    const accessKind = payloadAccessKind ?? state.accessKind;
+    const startedAt = payloadStartedAt ?? state.startedAt ?? event.createdAt;
     const sessionDuration =
-      state.accessKind === "trial" ? LOCAL_TRIAL_DURATION_MS : LOCAL_SESSION_DURATION_MS;
-    const startedAt = state.startedAt ?? event.createdAt;
+      accessKind === "trial" ? LOCAL_TRIAL_DURATION_MS : LOCAL_SESSION_DURATION_MS;
+    const expiresAt =
+      payloadExpiresAt ??
+      state.expiresAt ??
+      new Date(event.createdAt.getTime() + sessionDuration);
+    const trialEndsAt =
+      payloadTrialEndsAt ??
+      (accessKind === "trial"
+        ? state.trialEndsAt ?? new Date(startedAt.getTime() + LOCAL_TRIAL_DURATION_MS)
+        : state.trialEndsAt);
+
     return {
-      ...state,
       status: "live",
+      accessKind,
       startedAt,
-      expiresAt: state.expiresAt ?? new Date(event.createdAt.getTime() + sessionDuration),
-      trialEndsAt:
-        state.accessKind === "trial"
-          ? state.trialEndsAt ?? new Date(startedAt.getTime() + LOCAL_TRIAL_DURATION_MS)
-          : state.trialEndsAt,
+      expiresAt,
+      trialEndsAt,
     };
   }
 

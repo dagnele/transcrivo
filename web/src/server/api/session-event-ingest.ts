@@ -51,8 +51,7 @@ export async function ingestSessionEvent(input: unknown) {
   }
 
   if (parsedInput.data.type === "session.started") {
-    const parsedEvent = sessionEventSchema.parse(
-      await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
         await tx.execute(
           sql`select 1 from ${sessions} where ${sessions.id} = ${parsedInput.data.sessionId} for update`,
         );
@@ -78,7 +77,10 @@ export async function ingestSessionEvent(input: unknown) {
           });
 
           if (existingStartedEvent) {
-            return existingStartedEvent;
+            return {
+              event: existingStartedEvent,
+              shouldPublish: false,
+            };
           }
         }
 
@@ -97,17 +99,12 @@ export async function ingestSessionEvent(input: unknown) {
             getLastPublishedSessionSequence(parsedInput.data.sessionId),
           ) + 1;
 
-        const pendingEvent = {
-          id: generateRecordId(),
-          sessionId: parsedInput.data.sessionId,
-          sequence: nextSequence,
-          type: parsedInput.data.type,
-          createdAt: new Date(),
-          payload: parsedInput.data.payload,
-        };
+        const eventCreatedAt = new Date();
 
         let sessionAccessKind = session.accessKind;
         let trialEndsAt = session.trialEndsAt;
+        const startedAt = session.startedAt ?? eventCreatedAt;
+        let expiresAt = session.expiresAt;
 
         if (session.status === "draft") {
           await tx
@@ -132,13 +129,13 @@ export async function ingestSessionEvent(input: unknown) {
           const accessAssignment = await assignDraftSessionAccess({
             purchasedSessionCredits: profile.purchasedSessionCredits,
             trialUsedAt: profile.trialUsedAt,
-            startedAt: pendingEvent.createdAt,
+            startedAt: eventCreatedAt,
             consumePaidCredit: async () => {
               const [updatedProfile] = await tx
                 .update(userBillingProfiles)
                 .set({
                   purchasedSessionCredits: sql`${userBillingProfiles.purchasedSessionCredits} - 1`,
-                  updatedAt: pendingEvent.createdAt,
+                  updatedAt: eventCreatedAt,
                 })
                 .where(
                   and(
@@ -154,8 +151,8 @@ export async function ingestSessionEvent(input: unknown) {
               const [trialProfile] = await tx
                 .update(userBillingProfiles)
                 .set({
-                  trialUsedAt: pendingEvent.createdAt,
-                  updatedAt: pendingEvent.createdAt,
+                  trialUsedAt: eventCreatedAt,
+                  updatedAt: eventCreatedAt,
                 })
                 .where(
                   and(
@@ -171,35 +168,59 @@ export async function ingestSessionEvent(input: unknown) {
 
           sessionAccessKind = accessAssignment.accessKind;
           trialEndsAt = accessAssignment.trialEndsAt;
+          expiresAt =
+            session.expiresAt ??
+            calculateSessionExpiresAt(startedAt, sessionAccessKind);
 
           await tx
             .update(sessions)
             .set({
               status: "live",
               accessKind: sessionAccessKind,
-              startedAt: session.startedAt ?? pendingEvent.createdAt,
+              startedAt,
               endedAt: session.endedAt,
-              expiresAt:
-                session.expiresAt ??
-                calculateSessionExpiresAt(
-                  session.startedAt ?? pendingEvent.createdAt,
-                  sessionAccessKind,
-                ),
+              expiresAt,
               trialEndsAt,
             })
             .where(eq(sessions.id, parsedInput.data.sessionId));
         }
 
-        return (
-          await tx
-            .insert(sessionEvents)
-            .values(pendingEvent)
-            .returning()
-        )[0];
-      }),
-    );
+        const inputPayload =
+          parsedInput.data.payload && typeof parsedInput.data.payload === "object"
+            ? (parsedInput.data.payload as Record<string, unknown>)
+            : {};
 
-    publishSessionEvent(parsedEvent);
+        const pendingEvent = {
+          id: generateRecordId(),
+          sessionId: parsedInput.data.sessionId,
+          sequence: nextSequence,
+          type: parsedInput.data.type,
+          createdAt: eventCreatedAt,
+          payload: {
+            ...inputPayload,
+            accessKind: sessionAccessKind,
+            startedAt: startedAt.toISOString(),
+            expiresAt: expiresAt?.toISOString() ?? null,
+            trialEndsAt: trialEndsAt?.toISOString() ?? null,
+          },
+        };
+
+        return {
+          event: (
+            await tx
+              .insert(sessionEvents)
+              .values(pendingEvent)
+              .returning()
+          )[0],
+          shouldPublish: true,
+        };
+      });
+
+    const parsedEvent = sessionEventSchema.parse(result.event);
+
+    if (result.shouldPublish) {
+      publishSessionEvent(parsedEvent);
+    }
     return parsedEvent;
   }
 

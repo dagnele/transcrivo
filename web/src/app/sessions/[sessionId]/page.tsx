@@ -32,9 +32,9 @@ export default async function SessionDetailPage({
 
   try {
     const caller = await getServerTRPCCaller();
-    [session, latestSequence, solution] = await Promise.all([
+    latestSequence = await caller.session.latestSequence({ sessionId });
+    [session, solution] = await Promise.all([
       caller.session.byId({ sessionId }),
-      caller.session.latestSequence({ sessionId }),
       caller.session.solution({ sessionId }),
     ]);
   } catch (error) {
