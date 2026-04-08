@@ -6,7 +6,7 @@ use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 use tracing::info;
 
-use crate::util::paths::default_models_dir;
+use crate::util::paths::{default_models_dir, format_cli_path};
 
 const BASE_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
 const KNOWN_MODELS: &[&str] = &["tiny", "small", "medium", "large"];
@@ -85,7 +85,7 @@ fn status_models() -> Result<()> {
         .context("could not determine a default models directory for this platform")?;
 
     println!("Standard models directory:");
-    println!("{}", models_dir.display());
+    println!("{}", format_cli_path(&models_dir));
     println!();
 
     if !models_dir.exists() {
@@ -114,7 +114,7 @@ async fn download_model(args: &DownloadArgs) -> Result<()> {
         .context("could not determine a default models directory for this platform")?;
     tokio::fs::create_dir_all(&output_dir)
         .await
-        .with_context(|| format!("failed to create model directory {}", output_dir.display()))?;
+        .with_context(|| format!("failed to create model directory {}", format_cli_path(&output_dir)))?;
 
     let filename = model_filename(&args.model);
     let destination = output_dir.join(&filename);
@@ -122,14 +122,14 @@ async fn download_model(args: &DownloadArgs) -> Result<()> {
     let url = format!("{BASE_URL}/{filename}");
 
     if destination.exists() && !args.force {
-        println!("Model already exists: {}", destination.display());
+        println!("Model already exists: {}", format_cli_path(&destination));
         println!("Use --force to re-download.");
         return Ok(());
     }
 
     info!(model = %args.model, destination = %destination.display(), "downloading whisper model");
     println!("Downloading {} from {}", args.model, url);
-    println!("Saving to {}", destination.display());
+    println!("Saving to {}", format_cli_path(&destination));
 
     let client = reqwest::Client::new();
     let response = client
@@ -145,13 +145,13 @@ async fn download_model(args: &DownloadArgs) -> Result<()> {
     let mut stream = response.bytes_stream();
     let mut file = tokio::fs::File::create(&temporary)
         .await
-        .with_context(|| format!("failed to create {}", temporary.display()))?;
+        .with_context(|| format!("failed to create {}", format_cli_path(&temporary)))?;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.with_context(|| format!("download interrupted for {url}"))?;
         file.write_all(&chunk)
             .await
-            .with_context(|| format!("failed to write {}", temporary.display()))?;
+            .with_context(|| format!("failed to write {}", format_cli_path(&temporary)))?;
         downloaded_bytes += chunk.len() as u64;
         print_progress(&filename, downloaded_bytes, total_bytes);
     }
@@ -159,7 +159,7 @@ async fn download_model(args: &DownloadArgs) -> Result<()> {
     file.flush().await.with_context(|| {
         format!(
             "failed to flush downloaded model file {}",
-            temporary.display()
+            format_cli_path(&temporary)
         )
     })?;
     drop(file);
@@ -170,7 +170,7 @@ async fn download_model(args: &DownloadArgs) -> Result<()> {
             .with_context(|| {
                 format!(
                     "failed to replace existing model file {}",
-                    destination.display()
+                    format_cli_path(&destination)
                 )
             })?;
     }
@@ -179,13 +179,13 @@ async fn download_model(args: &DownloadArgs) -> Result<()> {
         .with_context(|| {
             format!(
                 "failed to move downloaded model into place at {}",
-                destination.display()
+                format_cli_path(&destination)
             )
         })?;
 
     println!();
     println!("Done.");
-    println!("Use with: --whisper-model-path {}", destination.display());
+    println!("Use with: transcrivo run --whisper-model-name {}", args.model);
     Ok(())
 }
 

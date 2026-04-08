@@ -1,6 +1,6 @@
 # Transcrivo CLI (Rust)
 
-This directory contains the Rust implementation of the local `transcrivo` CLI for Transcrivo.
+This directory contains the Rust implementation of the local `transcrivo` CLI.
 
 ## Current status
 
@@ -8,7 +8,27 @@ This directory contains the Rust implementation of the local `transcrivo` CLI fo
 - `run` works against the websocket backend flow
 - Linux live capture supports microphone and system audio
 - Windows live capture supports microphone and system audio through WASAPI
-- local Whisper transcription is used by `run` when a model is configured
+- local Whisper transcription is used by `run`
+
+## Quick start
+
+List devices:
+
+```bash
+cargo run -- devices
+```
+
+Run against a websocket backend:
+
+```bash
+cargo run -- run \
+  --backend-url ws://127.0.0.1:8080/ws \
+  --token test \
+  --whisper-model-name tiny
+```
+
+`run` automatically downloads the requested known model into the standard Transcrivo
+models directory if it is missing.
 
 ## Common commands
 
@@ -32,7 +52,7 @@ Use `--log-level` to control verbosity:
 
 ```bash
 cargo run -- --log-level debug devices
-cargo run -- --log-level trace run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
+cargo run -- --log-level trace run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name tiny
 ```
 
 ## Mock backend
@@ -59,10 +79,10 @@ The mock backend accepts the websocket connection, sends `session.ready`, and pr
 Install these before building on Linux:
 
 - Rust toolchain with `cargo`
-- `clang` / `libclang` for `bindgen` used by `whisper-rs-sys`
-- `cmake` for bundled `whisper.cpp` sources
+- `clang` and `libclang`
+- `cmake`
 - `pkg-config`
-- PipeWire development packages for the native capture path
+- PipeWire development packages
 
 Typical Debian/Ubuntu packages:
 
@@ -77,7 +97,7 @@ sudo apt-get install -y \
   libspa-0.2-dev
 ```
 
-If you plan to build with `--features whisper-gpu-vulkan`, install the Vulkan development tools too:
+Optional for `--features whisper-gpu-vulkan`:
 
 ```bash
 sudo apt-get install -y \
@@ -85,8 +105,7 @@ sudo apt-get install -y \
   glslc
 ```
 
-`whisper-rs-sys` configures `whisper.cpp` through CMake, and CMake's Vulkan detection expects `glslc`
-to be available on `PATH`.
+`glslc` must be available on `PATH` for the Vulkan build.
 
 If `libclang` is not already discoverable, set:
 
@@ -122,7 +141,7 @@ cargo run -- devices
 cargo run -- run \
   --backend-url ws://127.0.0.1:8080/ws \
   --token test \
-  --whisper-model-name small.en
+  --whisper-model-name tiny
 ```
 
 Optional device selection:
@@ -131,7 +150,7 @@ Optional device selection:
 cargo run -- run \
   --backend-url ws://127.0.0.1:8080/ws \
   --token test \
-  --whisper-model-name small.en \
+  --whisper-model-name tiny \
   --mic-device <mic-id> \
   --system-device <system-id>
 ```
@@ -139,22 +158,32 @@ cargo run -- run \
 ### Linux notes
 
 - Linux capture uses the native PipeWire-backed capture path
-- `run` requires a backend URL, token, and usable Whisper model configuration
+- `run` requires a backend URL and token
 - `whisper-gpu-vulkan` needs Vulkan headers/libraries plus `glslc` on `PATH`
 
 ## Windows
 
 ### Quick start
 
-Open PowerShell and install the build tools:
+Install these before building on Windows:
+
+- Rust toolchain with `cargo`
+- Visual Studio 2022 Build Tools or Visual Studio 2022 with the C++ toolchain
+- LLVM/Clang
+- CMake
+
+PowerShell example:
 
 ```powershell
 winget install --id LLVM.LLVM --exact --accept-source-agreements --accept-package-agreements
 winget install --id Kitware.CMake --exact --accept-source-agreements --accept-package-agreements
-winget install --id KhronosGroup.VulkanSDK --exact --accept-source-agreements --accept-package-agreements
 ```
 
-You also need Visual Studio 2022 Build Tools or Visual Studio 2022 with the C++ toolchain.
+Optional for `--features whisper-gpu-vulkan`:
+
+```powershell
+winget install --id KhronosGroup.VulkanSDK --exact --accept-source-agreements --accept-package-agreements
+```
 
 Then start a new PowerShell session and set a short Cargo target directory:
 
@@ -187,7 +216,7 @@ long nested paths under `target\`.
 From `cli/`:
 
 ```powershell
-cargo run --release --features whisper-gpu-vulkan -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
+cargo run --release --features whisper-gpu-vulkan -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name tiny
 ```
 
 ### Build and checks
@@ -215,25 +244,26 @@ PowerShell window 2:
 cargo run -- devices
 
 # run against the mock backend
-cargo run -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
+cargo run -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name tiny
 ```
 
 Optional device selection:
 
 ```powershell
-cargo run -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en --mic-device <mic-id> --system-device <system-id>
+cargo run -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name tiny --mic-device <mic-id> --system-device <system-id>
 ```
 
 ### Windows notes
 
 - Windows capture uses WASAPI for microphone capture and loopback system capture
-- `run` requires a backend URL, token, and usable Whisper model configuration
+- `run` requires a backend URL and token
 - `whisper-gpu-vulkan` requires both the Vulkan SDK and a working Vulkan-capable driver
 - `CARGO_TARGET_DIR='C:\t'` is a practical default for Windows Vulkan builds
 
-## Whisper model configuration
+## Whisper models
 
-The CLI expects a local ggml Whisper model file when you use `run` for live transcription.
+`run` resolves models by name from the standard Transcrivo models directory.
+If the requested known model is missing, it is downloaded automatically before capture starts.
 
 List available models:
 
@@ -242,45 +272,35 @@ cargo run -- models list
 cargo run -- models status
 ```
 
+Known model names:
+
+- `tiny`
+- `small`
+- `medium`
+- `large`
+
 By default, models are stored in the standard Transcrivo app data directory:
 
 - Linux: `$XDG_DATA_HOME/transcrivo/models` or `~/.local/share/transcrivo/models`
 - Windows: `%LOCALAPPDATA%\Transcrivo\models`
 
-Download a model:
+Download a model manually:
 
 ```bash
-cargo run -- models download small.en
+cargo run -- models download tiny
 ```
 
-Model lookup options:
+Pick a specific model:
 
 ```bash
-# model name lookup
 cargo run -- run \
   --backend-url ws://127.0.0.1:8080/ws \
   --token test \
-  --whisper-model-name small.en
-```
-
-Linux/macOS shell:
-
-```bash
-export TRANSCRIVO_WHISPER_MODEL_DIR=/absolute/path/to/models
-export TRANSCRIVO_WHISPER_MODEL_PATH=/absolute/path/to/ggml-small.en.bin
-```
-
-PowerShell:
-
-```powershell
-$env:TRANSCRIVO_WHISPER_MODEL_DIR = 'C:\path\to\models'
-$env:TRANSCRIVO_WHISPER_MODEL_PATH = 'C:\path\to\ggml-small.en.bin'
+  --whisper-model-name tiny
 ```
 
 Lookup order:
 
-- `TRANSCRIVO_WHISPER_MODEL_PATH`
-- `TRANSCRIVO_WHISPER_MODEL_DIR/ggml-<model>.bin`
 - standard Transcrivo models directory
 - `./ggml-<model>.bin`
 
@@ -300,14 +320,14 @@ Run:
 cargo run --features whisper-gpu-vulkan -- run \
   --backend-url ws://127.0.0.1:8080/ws \
   --token test \
-  --whisper-model-name small.en
+  --whisper-model-name tiny
 ```
 
 Windows PowerShell example:
 
 ```powershell
 $env:CARGO_TARGET_DIR = 'C:\t'
-cargo run --features whisper-gpu-vulkan -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name small.en
+cargo run --features whisper-gpu-vulkan -- run --backend-url ws://127.0.0.1:8080/ws --token test --whisper-model-name tiny
 ```
 
 Notes:

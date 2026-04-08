@@ -11,6 +11,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 use crate::cli::LogLevel;
+use crate::util::paths::format_cli_path;
 
 const LOG_FILE_PREFIX: &str = "transcrivo.log";
 const LOG_RETENTION_DAYS: usize = 7;
@@ -28,8 +29,12 @@ pub fn init_logging(log_level: LogLevel) -> Result<()> {
 
     let logs_dir = crate::util::paths::default_logs_dir()
         .context("could not determine default Transcrivo log directory")?;
-    fs::create_dir_all(&logs_dir)
-        .with_context(|| format!("failed to create log directory at {}", logs_dir.display()))?;
+    fs::create_dir_all(&logs_dir).with_context(|| {
+        format!(
+            "failed to create log directory at {}",
+            format_cli_path(&logs_dir)
+        )
+    })?;
     prune_old_logs(&logs_dir)?;
 
     let file_appender = tracing_appender::rolling::daily(&logs_dir, LOG_FILE_PREFIX);
@@ -60,8 +65,12 @@ fn prune_old_logs(logs_dir: &Path) -> Result<()> {
     let delete_count = log_files.len().saturating_sub(LOG_RETENTION_DAYS);
 
     for entry in log_files.into_iter().take(delete_count) {
-        fs::remove_file(&entry.path)
-            .with_context(|| format!("failed to remove old log file {}", entry.path.display()))?;
+        fs::remove_file(&entry.path).with_context(|| {
+            format!(
+                "failed to remove old log file {}",
+                format_cli_path(&entry.path)
+            )
+        })?;
     }
 
     Ok(())
@@ -71,7 +80,7 @@ fn list_rotated_log_files(logs_dir: &Path) -> Result<Vec<LogFileEntry>> {
     let mut files = Vec::new();
 
     for entry in fs::read_dir(logs_dir)
-        .with_context(|| format!("failed to read log directory {}", logs_dir.display()))?
+        .with_context(|| format!("failed to read log directory {}", format_cli_path(logs_dir)))?
     {
         let entry = entry?;
         let path = entry.path();
@@ -82,7 +91,7 @@ fn list_rotated_log_files(logs_dir: &Path) -> Result<Vec<LogFileEntry>> {
         let metadata = entry.metadata()?;
         let created_at: DateTime<Utc> = metadata
             .modified()
-            .with_context(|| format!("failed to read mtime for {}", path.display()))?
+            .with_context(|| format!("failed to read mtime for {}", format_cli_path(&path)))?
             .into();
         files.push(LogFileEntry { path, created_at });
     }

@@ -1,4 +1,3 @@
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -6,13 +5,10 @@ use thiserror::Error;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 use crate::audio::segmenter::AudioSegment;
-use crate::util::paths::default_models_dir;
+use crate::util::paths::{default_models_dir, format_cli_path};
 use crate::util::shutdown::ShutdownController;
 
 pub const DEFAULT_MODEL_NAME: &str = "large";
-pub const DEFAULT_MODEL_DIR_ENV: &str = "TRANSCRIVO_WHISPER_MODEL_DIR";
-pub const DEFAULT_MODEL_PATH_ENV: &str = "TRANSCRIVO_WHISPER_MODEL_PATH";
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WhisperCppConfig {
     pub model_name: String,
@@ -115,9 +111,7 @@ impl RealWhisperBackend {
     ) -> Result<Self, TranscriptionError> {
         let model_path = model_path.as_ref().to_path_buf();
         if !model_path.is_file() {
-            return Err(TranscriptionError::ModelNotFound(
-                model_path.display().to_string(),
-            ));
+            return Err(TranscriptionError::ModelNotFound(format_cli_path(&model_path)));
         }
 
         let mut context_params = WhisperContextParameters::default();
@@ -323,21 +317,7 @@ impl WhisperCppAdapter {
 }
 
 pub fn resolve_model_path(config: &WhisperCppConfig) -> Result<PathBuf, TranscriptionError> {
-    if let Some(explicit) = env::var_os(DEFAULT_MODEL_PATH_ENV) {
-        let path = PathBuf::from(explicit);
-        if path.is_file() {
-            return Ok(path);
-        }
-        return Err(TranscriptionError::ModelNotFound(
-            path.display().to_string(),
-        ));
-    }
-
     let mut candidates = Vec::new();
-    if let Some(dir) = env::var_os(DEFAULT_MODEL_DIR_ENV) {
-        candidates.push(PathBuf::from(dir).join(model_file_name(&config.model_name)));
-    }
-
     if let Some(dir) = default_models_dir() {
         candidates.push(dir.join(model_file_name(&config.model_name)));
     }
