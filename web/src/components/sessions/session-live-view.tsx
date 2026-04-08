@@ -20,12 +20,10 @@ import {
   type SessionSolutionEvent,
 } from "@/lib/contracts/solution";
 import type { Session, SessionStatus } from "@/lib/contracts/session";
+import { SESSION_DURATION_MS as LOCAL_SESSION_DURATION_MS, TRIAL_DURATION_MS as LOCAL_TRIAL_DURATION_MS } from "@/lib/session-timing";
 import { downloadSessionMarkdown } from "@/lib/session-ui";
 import { useTRPC } from "@/lib/trpc";
 import { useIsMobile } from "@/hooks/use-mobile";
-
-const LOCAL_SESSION_DURATION_MS = 60 * 60 * 1000;
-const LOCAL_TRIAL_DURATION_MS = 30 * 60 * 1000;
 
 type SessionLiveViewProps = {
   session: Session;

@@ -1,5 +1,6 @@
 import { and, desc, eq, lte, or } from "drizzle-orm";
 import { generateRecordId } from "@/lib/ids";
+import { SESSION_DURATION_MS, TRIAL_DURATION_MS } from "@/lib/session-timing";
 
 import type { SessionStatus } from "@/lib/contracts/session";
 import { createExpiredSessionReconciler } from "@/server/session-reconciliation";
@@ -7,9 +8,6 @@ import { db } from "@/server/db/client";
 import { sessionEvents, sessions, type Session } from "@/server/db/schema";
 import { getLastPublishedSessionSequence, publishSessionEvent } from "@/server/api/session-events";
 import { sessionEventSchema } from "@/lib/contracts/event";
-
-export const SESSION_DURATION_MS = 60 * 60 * 1000;
-export const TRIAL_DURATION_MS = 30 * 60 * 1000;
 
 const CLOSED_SESSION_STATUSES = new Set<SessionStatus>(["ended", "failed", "expired"]);
 

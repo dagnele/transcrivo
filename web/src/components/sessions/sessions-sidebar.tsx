@@ -6,6 +6,7 @@ import { UserButton } from "@daveyplate/better-auth-ui";
 
 import type { EntitlementSummary } from "@/lib/contracts/billing";
 import type { Session } from "@/lib/contracts/session";
+import { TRIAL_DURATION_MINUTES } from "@/lib/session-timing";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -36,7 +37,7 @@ function getAvailabilityCopy(summary: EntitlementSummary | null) {
   if (summary.trialAvailable) {
     return {
       label: "Free trial available",
-      detail: "Your next started session can use the 5 min trial.",
+      detail: `Your next started session can use the ${TRIAL_DURATION_MINUTES} min trial.`,
     };
   }
 

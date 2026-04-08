@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AlertCircle, Sparkles } from "lucide-react";
 
@@ -44,14 +44,11 @@ export function SolutionPane({ state, sessionType, subscriptionStatus, onToggleS
   const showCatchingUp = state.isCatchingUp && state.status !== "error" && hasRenderableSolution;
   const showInlineError = state.status === "error" && hasRenderableSolution;
   const showEmptyError = state.status === "error" && !hasRenderableSolution;
+  const solutionContent = solution?.content ?? "";
 
-  const sectionCount = useMemo(() => {
-    if (!hasRenderableSolution) {
-      return 0;
-    }
-
-    return (solution.content.match(/^#{1,3}\s+/gm) ?? []).length;
-  }, [hasRenderableSolution, solution?.content]);
+  const sectionCount = hasRenderableSolution
+    ? (solutionContent.match(/^#{1,3}\s+/gm) ?? []).length
+    : 0;
   const currentSectionIndex = Math.min(sectionIndex, Math.max(sectionCount - 1, 0));
 
   useEffect(() => {
@@ -92,7 +89,7 @@ export function SolutionPane({ state, sessionType, subscriptionStatus, onToggleS
     return () => {
       container.removeEventListener("scroll", updateActiveSection);
     };
-  }, [hasRenderableSolution, solution?.content]);
+  }, [hasRenderableSolution, solutionContent]);
 
   const jumpToSection = (direction: -1 | 1) => {
     const container = scrollContainerRef.current;
@@ -191,7 +188,7 @@ export function SolutionPane({ state, sessionType, subscriptionStatus, onToggleS
                   </span>
                 </div>
               ) : null}
-              <SolutionMarkdown content={solution.content} />
+               <SolutionMarkdown content={solutionContent} />
             </div>
           ) : null}
 

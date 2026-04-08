@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { SiteHeader } from "@/components/site-header";
+import { TRIAL_DURATION_MINUTES } from "@/lib/session-timing";
 import { getOptionalSession } from "@/server/auth-session";
 
 export const metadata: Metadata = {
@@ -176,7 +177,7 @@ export default async function HomePage() {
               </p>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <PricingFeature>1 free session per account</PricingFeature>
-                <PricingFeature>30-minute session limit</PricingFeature>
+                <PricingFeature>{TRIAL_DURATION_MINUTES}-minute session limit</PricingFeature>
                 <PricingFeature>Full live transcript</PricingFeature>
                 <PricingFeature>AI-powered solutions</PricingFeature>
                 <PricingFeature>Local Whisper transcription</PricingFeature>

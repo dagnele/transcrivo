@@ -15,6 +15,7 @@ import {
   sessionLanguageOptions,
   sessionTypeOptions,
 } from "@/lib/session-config";
+import { TRIAL_DURATION_MINUTES } from "@/lib/session-timing";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -260,7 +261,9 @@ export function CreateSessionDialog({
             ) : entitlementSummary.trialAvailable ? (
               <p>
                 You can create a draft now. Billing is decided when the session starts, and you still have a{" "}
-                <span className="font-medium text-foreground">Free trial (5 min)</span>.
+                <span className="font-medium text-foreground">
+                  Free trial ({TRIAL_DURATION_MINUTES} min)
+                </span>.
               </p>
             ) : (
               <p>
