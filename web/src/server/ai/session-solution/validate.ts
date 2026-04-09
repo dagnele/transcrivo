@@ -1,16 +1,15 @@
 import type { SessionType } from "@/lib/contracts/session";
 
 const requiredMarkdownSections: Record<SessionType, readonly string[]> = {
-  coding: ["Understanding", "Approach", "Solution", "Notes"],
-  system_design: ["Understanding", "Approach", "Solution", "Notes"],
-  writing: ["Intent", "Draft", "Notes"],
+  coding: ["Understanding", "Approach", "Solution"],
+  system_design: ["Understanding", "Approach", "Solution"],
+  writing: ["Intent", "Draft"],
   meeting_summary: [
     "Summary",
     "Decisions",
     "Action Items",
     "Risks / Blockers",
     "Open Questions",
-    "Notes",
   ],
 };
 
@@ -35,11 +34,11 @@ export function validateGeneratedSolution(
   const normalizedContent = content.trim();
 
   if (!normalizedContent) {
-    throw new Error("The AI provider returned an empty solution.");
+    throw new Error("The generated solution was empty.");
   }
 
   if (containsRawHtml(normalizedContent)) {
-    throw new Error("The AI provider returned raw HTML, which is not allowed.");
+    throw new Error("The generated solution contained raw HTML, which is not allowed.");
   }
 
   const missingSections = requiredMarkdownSections[sessionType].filter(
@@ -51,7 +50,7 @@ export function validateGeneratedSolution(
 
   if (missingSections.length > 0) {
     throw new Error(
-      `The AI provider returned an invalid solution format. Missing sections: ${missingSections.join(", ")}.`,
+      `The generated solution had an invalid format. Missing sections: ${missingSections.join(", ")}.`,
     );
   }
 

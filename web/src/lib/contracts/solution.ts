@@ -15,13 +15,74 @@ export const sessionSolutionEventTypeValues = [
 
 export const sessionSolutionIdSchema = z.string().trim().min(1).max(128);
 
+const requiredMarkdownFieldSchema = z.string().trim().min(1).max(8_000);
+const optionalMarkdownFieldSchema = z.string().trim().max(2_000).optional().default("");
+
+const meetingSummaryActionItemSchema = z.object({
+  task: z.string().trim().min(1).max(500),
+  owner: z.string().trim().min(1).max(200).nullable(),
+  deadline: z.string().trim().min(1).max(200).nullable(),
+});
+
+export const codingSolutionStructuredSchema = z.object({
+  understanding: requiredMarkdownFieldSchema,
+  approach: requiredMarkdownFieldSchema,
+  solution: requiredMarkdownFieldSchema,
+  notes: optionalMarkdownFieldSchema,
+});
+
+export const systemDesignSolutionStructuredSchema = z.object({
+  understanding: requiredMarkdownFieldSchema,
+  approach: requiredMarkdownFieldSchema,
+  solution: requiredMarkdownFieldSchema,
+  notes: optionalMarkdownFieldSchema,
+});
+
+export const writingSolutionStructuredSchema = z.object({
+  intent: requiredMarkdownFieldSchema,
+  draft: requiredMarkdownFieldSchema,
+  notes: optionalMarkdownFieldSchema,
+});
+
+export const meetingSummaryStructuredSchema = z.object({
+  summary: z.array(z.string().trim().min(1).max(500)).max(12),
+  decisions: z.array(z.string().trim().min(1).max(500)).max(12),
+  actionItems: z.array(meetingSummaryActionItemSchema).max(12),
+  risks: z.array(z.string().trim().min(1).max(500)).max(12),
+  openQuestions: z.array(z.string().trim().min(1).max(500)).max(12),
+  notes: z.array(z.string().trim().min(1).max(500)).max(8).optional().default([]),
+});
+
+export const structuredSolutionMetadataSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("coding"),
+    data: codingSolutionStructuredSchema,
+  }),
+  z.object({
+    type: z.literal("system_design"),
+    data: systemDesignSolutionStructuredSchema,
+  }),
+  z.object({
+    type: z.literal("writing"),
+    data: writingSolutionStructuredSchema,
+  }),
+  z.object({
+    type: z.literal("meeting_summary"),
+    data: meetingSummaryStructuredSchema,
+  }),
+]);
+
 export const sessionSolutionStatusSchema = z.enum(sessionSolutionStatusValues);
 
 export const sessionSolutionFormatSchema = z.enum(sessionSolutionFormatValues);
 
 export const sessionSolutionEventTypeSchema = z.enum(sessionSolutionEventTypeValues);
 
-export const sessionSolutionMetadataSchema = z.record(z.string(), z.unknown()).nullable();
+export const sessionSolutionMetadataSchema = z
+  .object({
+    structured: structuredSolutionMetadataSchema,
+  })
+  .nullable();
 
 export const sessionSolutionSchema = z.object({
   id: sessionSolutionIdSchema,
@@ -104,5 +165,13 @@ export const sessionSolutionHistoryInputSchema = z.object({
 
 export type SessionSolutionStatus = z.infer<typeof sessionSolutionStatusSchema>;
 export type SessionSolutionFormat = z.infer<typeof sessionSolutionFormatSchema>;
+export type CodingSolutionStructured = z.infer<typeof codingSolutionStructuredSchema>;
+export type SystemDesignSolutionStructured = z.infer<
+  typeof systemDesignSolutionStructuredSchema
+>;
+export type WritingSolutionStructured = z.infer<typeof writingSolutionStructuredSchema>;
+export type MeetingSummaryStructured = z.infer<typeof meetingSummaryStructuredSchema>;
+export type StructuredSolutionMetadata = z.infer<typeof structuredSolutionMetadataSchema>;
+export type SessionSolutionMetadata = z.infer<typeof sessionSolutionMetadataSchema>;
 export type SessionSolution = z.infer<typeof sessionSolutionSchema>;
 export type SessionSolutionEvent = z.infer<typeof sessionSolutionEventSchema>;

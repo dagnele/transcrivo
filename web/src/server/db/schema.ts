@@ -15,6 +15,7 @@ import {
 } from "@/lib/contracts/billing";
 import { sessionEventTypeValues } from "@/lib/contracts/event";
 import {
+  type SessionSolutionMetadata,
   sessionSolutionFormatValues,
   sessionSolutionStatusValues,
 } from "@/lib/contracts/solution";
@@ -164,7 +165,7 @@ export const sessionSolutions = pgTable(
     provider: text("provider"),
     model: text("model"),
     promptVersion: text("prompt_version"),
-    meta: jsonb("meta").$type<Record<string, unknown> | null>(),
+    meta: jsonb("meta").$type<SessionSolutionMetadata>(),
     createdAt: timestamp("created_at", {
       withTimezone: true,
       mode: "date",

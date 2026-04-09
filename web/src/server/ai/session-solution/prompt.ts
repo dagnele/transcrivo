@@ -91,29 +91,29 @@ function buildWritingPrompt(
   return {
     system: withCommonSystemInstructions(sessionConstraints, [
       "You help turn spoken thoughts into clear written output.",
-      "Return only Markdown.",
-      "Do not use raw HTML.",
+      "Return only an object that matches the requested schema.",
       "Do not reveal hidden chain-of-thought.",
       "Be practical, concise, and directly useful.",
-      "Prefer short sections with headings.",
+      "Prefer short, focused fields.",
     ]),
-    outputMode: "markdown",
+    outputMode: "session_object",
     prompt: [
       ...basePrompt,
       isIncremental
         ? "Revise the previous solution using only the new transcript evidence. Preserve still-correct content and update only what the new evidence changes."
         : "",
-      "Produce Markdown with this shape:",
-      "1. ## Intent",
-      "2. ## Draft",
-      "3. ## Notes",
+      "Return an object with these fields:",
+      "- intent: concise description of the likely requested artifact",
+      "- draft: polished, usable final text",
+      "- notes: optional brief caveats about ambiguity or missing context",
       "",
       "Rules:",
-      "- Keep each section concise and scannable.",
-      "- In ## Intent, state the most likely requested artifact in one or two sentences at most.",
-      "- In ## Draft, provide polished, usable text rather than bullet fragments unless the untrusted content clearly calls for an outline.",
-      "- In ## Draft, do not add facts, names, dates, or commitments that are not supported by the untrusted content.",
-      "- In ## Notes, call out missing context or narrow assumptions briefly.",
+      "- Keep each field concise and scannable.",
+      "- In intent, state the most likely requested artifact in one or two sentences at most.",
+      "- In draft, provide polished, usable text rather than bullet fragments unless the untrusted content clearly calls for an outline.",
+      "- In draft, do not add facts, names, dates, or commitments that are not supported by the untrusted content.",
+      "- Use an empty string for notes when there is nothing important to call out.",
+      "- Do not include Markdown, HTML, or extra keys.",
     ]
       .filter(Boolean)
       .join("\n"),
@@ -132,7 +132,7 @@ function buildMeetingSummaryPrompt(
       "Do not reveal hidden chain-of-thought.",
       "Be practical, concise, and directly useful.",
     ]),
-    outputMode: "meeting_summary_object",
+    outputMode: "session_object",
     prompt: [
       ...basePrompt,
       isIncremental
@@ -166,31 +166,32 @@ function buildTechnicalPrompt(
   return {
     system: withCommonSystemInstructions(sessionConstraints, [
       "You are helping during a live technical session.",
-      "Return only Markdown.",
-      "Do not use raw HTML.",
+      "Return only an object that matches the requested schema.",
       "Do not reveal hidden chain-of-thought.",
       "Be practical, concise, and directly useful.",
-      "Prefer short sections with headings.",
+      "Prefer short, focused fields.",
     ]),
-    outputMode: "markdown",
+    outputMode: "session_object",
     prompt: [
       ...basePrompt,
       isIncremental
         ? "Revise the previous solution using only the new transcript evidence. Preserve still-correct content and update only what the new evidence changes."
         : "",
-      "Produce Markdown with this shape:",
-      "1. ## Understanding",
-      "2. ## Approach",
-      "3. ## Solution",
-      "4. ## Notes",
+      "Return an object with these fields:",
+      "- understanding: concise restatement of the technical task or grounded interpretation",
+      "- approach: the chosen path and why it fits",
+      "- solution: the main answer, including concise code or diagrams when useful",
+      "- notes: optional assumptions, caveats, or missing context",
       "",
       "Rules:",
-      "- Keep each section concise and scannable.",
+      "- Keep each field concise and scannable.",
       "- Tailor the answer to the technical task supported by the untrusted content.",
       "- Prefer one strong solution over multiple scattered alternatives.",
       "- Include code only when it materially helps.",
       "- If code is included, keep it concise and explain key tradeoffs briefly.",
       "- Label assumptions explicitly instead of presenting them as confirmed facts.",
+      "- Use an empty string for notes when there is nothing important to call out.",
+      "- Do not include Markdown headings, HTML, or extra keys.",
     ]
       .filter(Boolean)
       .join("\n"),

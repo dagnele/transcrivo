@@ -1,23 +1,31 @@
-import { z } from "zod";
+import type { SessionType } from "@/lib/contracts/session";
+import {
+  codingSolutionStructuredSchema,
+  meetingSummaryStructuredSchema,
+  sessionSolutionMetadataSchema,
+  systemDesignSolutionStructuredSchema,
+  writingSolutionStructuredSchema,
+  type CodingSolutionStructured,
+  type MeetingSummaryStructured,
+  type SessionSolutionMetadata,
+  type SystemDesignSolutionStructured,
+  type WritingSolutionStructured,
+} from "@/lib/contracts/solution";
 
-export const solutionPromptVersion = "v3";
+export const solutionPromptVersion = "v4";
 
-const meetingSummaryActionItemSchema = z.object({
-  task: z.string().trim().min(1).max(500),
-  owner: z.string().trim().min(1).max(200).nullable(),
-  deadline: z.string().trim().min(1).max(200).nullable(),
-});
-
-export const meetingSummaryStructuredSchema = z.object({
-  summary: z.array(z.string().trim().min(1).max(500)).max(12),
-  decisions: z.array(z.string().trim().min(1).max(500)).max(12),
-  actionItems: z.array(meetingSummaryActionItemSchema).max(12),
-  risks: z.array(z.string().trim().min(1).max(500)).max(12),
-  openQuestions: z.array(z.string().trim().min(1).max(500)).max(12),
-  notes: z.array(z.string().trim().min(1).max(500)).max(8),
-});
-
-export type MeetingSummaryStructured = z.infer<typeof meetingSummaryStructuredSchema>;
+export function getStructuredSolutionSchema(sessionType: SessionType) {
+  switch (sessionType) {
+    case "coding":
+      return codingSolutionStructuredSchema;
+    case "system_design":
+      return systemDesignSolutionStructuredSchema;
+    case "writing":
+      return writingSolutionStructuredSchema;
+    case "meeting_summary":
+      return meetingSummaryStructuredSchema;
+  }
+}
 
 export type GeneratedSolution = {
   content: string;
@@ -25,16 +33,29 @@ export type GeneratedSolution = {
   provider: string;
   model: string;
   promptVersion: string;
-  meta: Record<string, unknown> | null;
+  meta: SessionSolutionMetadata;
 };
 
 export type SolutionPrompt = {
   system: string;
   prompt: string;
-  outputMode: "markdown" | "meeting_summary_object";
+  outputMode: "session_object";
 };
 
 export type SessionConstraintInstructions = {
   system: string[];
   prompt: string[];
+};
+
+export {
+  codingSolutionStructuredSchema,
+  meetingSummaryStructuredSchema,
+  sessionSolutionMetadataSchema,
+  systemDesignSolutionStructuredSchema,
+  writingSolutionStructuredSchema,
+  type CodingSolutionStructured,
+  type MeetingSummaryStructured,
+  type SessionSolutionMetadata,
+  type SystemDesignSolutionStructured,
+  type WritingSolutionStructured,
 };

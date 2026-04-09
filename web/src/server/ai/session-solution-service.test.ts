@@ -7,7 +7,6 @@ import type {
 import type { TranscriptSummary } from "@/server/ai/session-solution/transcript";
 
 type MockConfig = {
-  generateTextImpl?: () => Promise<{ text: string }>;
   generateObjectImpl?: () => Promise<{ object: unknown }>;
 };
 
@@ -24,13 +23,6 @@ mock.module("@/server/ai/openrouter", () => ({
 }));
 
 mock.module("ai", () => ({
-  generateText: async () => {
-    if (!serviceMockState.generateTextImpl) {
-      throw new Error("generateText mock not configured");
-    }
-
-    return serviceMockState.generateTextImpl();
-  },
   generateObject: async () => {
     if (!serviceMockState.generateObjectImpl) {
       throw new Error("generateObject mock not configured");
@@ -42,16 +34,19 @@ mock.module("ai", () => ({
 
 const {
   buildSolutionPrompt,
+  codingSolutionStructuredSchema,
   generateSessionSolution,
   meetingSummaryStructuredSchema,
+  renderCodingSolutionMarkdown,
   renderMeetingSummaryMarkdown,
+  renderWritingSolutionMarkdown,
   validateGeneratedSolution,
+  writingSolutionStructuredSchema,
 } = await import("@/server/ai/session-solution-service");
 
 function createSession(overrides: Partial<Session> = {}): Session {
   const sessionType = overrides.type ?? "coding";
-  const language =
-    overrides.language ?? (sessionType === "coding" ? "typescript" : null);
+  const language = overrides.language ?? (sessionType === "coding" ? "typescript" : null);
 
   return {
     id: "session-1",
@@ -97,14 +92,11 @@ function createValidMarkdown(sessionType: SessionType) {
         "",
         "## Draft",
         "Thanks for the discussion. Here is the proposed next step.",
-        "",
-        "## Notes",
-        "Missing the recipient name.",
       ].join("\n");
     case "meeting_summary":
       return [
         "## Summary",
-        "The team reviewed the migration plan.",
+        "- The team reviewed the migration plan.",
         "",
         "## Decisions",
         "- Keep the current API shape.",
@@ -113,13 +105,10 @@ function createValidMarkdown(sessionType: SessionType) {
         "- Sam will draft the rollout checklist.",
         "",
         "## Risks / Blockers",
-        "- None captured.",
+        "None captured.",
         "",
         "## Open Questions",
         "- Whether the cutoff date should move.",
-        "",
-        "## Notes",
-        "- Transcript omitted the final owner confirmation.",
       ].join("\n");
     default:
       return [
@@ -131,9 +120,6 @@ function createValidMarkdown(sessionType: SessionType) {
         "",
         "## Solution",
         "```typescript\nconst answer = 1;\n```",
-        "",
-        "## Notes",
-        "Assumes the current API contract stays the same.",
       ].join("\n");
   }
 }
@@ -157,29 +143,12 @@ function createTranscriptEvent(text = "Explain the fix.") {
 }
 
 beforeEach(() => {
-  serviceMockState.generateTextImpl = async () => ({
-    text: [
-      "## Understanding",
-      "Generated understanding.",
-      "",
-      "## Approach",
-      "Generated approach.",
-      "",
-      "## Solution",
-      "Generated solution.",
-      "",
-      "## Notes",
-      "Generated notes.",
-    ].join("\n"),
-  });
   serviceMockState.generateObjectImpl = async () => ({
     object: {
-      summary: ["Generated summary."],
-      decisions: ["Keep the current API shape."],
-      actionItems: [],
-      risks: [],
-      openQuestions: [],
-      notes: [],
+      understanding: "Generated understanding.",
+      approach: "Generated approach.",
+      solution: "Generated solution.",
+      notes: "Generated notes.",
     },
   });
 });
@@ -200,6 +169,25 @@ describe("session solution prompts", () => {
     expect(prompt.prompt).not.toContain("Intent hint:");
   });
 
+  it("uses object output mode for all session types", () => {
+    const sessionTypes: SessionType[] = [
+      "coding",
+      "system_design",
+      "writing",
+      "meeting_summary",
+    ];
+
+    for (const sessionType of sessionTypes) {
+      const prompt = buildSolutionPrompt(
+        createSession({ type: sessionType, language: sessionType === "writing" || sessionType === "meeting_summary" ? null : "typescript" }),
+        createSummary(),
+      );
+
+      expect(prompt.outputMode).toBe("session_object");
+      expect(prompt.system).toContain("Return only an object that matches the requested schema.");
+    }
+  });
+
   it("uses stricter meeting-summary guardrails", () => {
     const prompt = buildSolutionPrompt(
       createSession({ type: "meeting_summary", language: null }),
@@ -214,18 +202,6 @@ describe("session solution prompts", () => {
     );
   });
 
-  it("uses object output mode for meeting summaries", () => {
-    const prompt = buildSolutionPrompt(
-      createSession({ type: "meeting_summary", language: null }),
-      createSummary(),
-    );
-
-    expect(prompt.outputMode).toBe("meeting_summary_object");
-    expect(prompt.system).toContain("Return only an object that matches the requested schema.");
-    expect(prompt.prompt).toContain("actionItems: array of { task, owner, deadline } objects");
-    expect(prompt.prompt).not.toContain("Produce Markdown with this shape:");
-  });
-
   it("includes previous solution context for incremental updates", () => {
     const prompt = buildSolutionPrompt(createSession(), createSummary(), {
       previousSolutionContent: [
@@ -237,9 +213,6 @@ describe("session solution prompts", () => {
         "",
         "## Solution",
         "Existing solution.",
-        "",
-        "## Notes",
-        "Existing notes.",
       ].join("\n"),
     });
 
@@ -250,8 +223,36 @@ describe("session solution prompts", () => {
   });
 });
 
-describe("meeting summary rendering", () => {
-  it("renders structured meeting summaries to validated markdown", () => {
+describe("structured solution rendering", () => {
+  it("renders coding solutions without notes when notes are empty", () => {
+    const structured = codingSolutionStructuredSchema.parse({
+      understanding: "The task is to fix a bug.",
+      approach: "Inspect the state transition and patch the smallest broken branch.",
+      solution: "```typescript\nconst answer = 1;\n```",
+      notes: "",
+    });
+
+    const markdown = renderCodingSolutionMarkdown(structured);
+
+    expect(markdown).toContain("## Understanding");
+    expect(markdown).not.toContain("## Notes");
+    expect(validateGeneratedSolution("coding", markdown)).toBe(markdown);
+  });
+
+  it("renders writing notes only when present", () => {
+    const structured = writingSolutionStructuredSchema.parse({
+      intent: "Draft a concise follow-up email.",
+      draft: "Thanks for the discussion. Here is the proposed next step.",
+      notes: "Missing the recipient name.",
+    });
+
+    const markdown = renderWritingSolutionMarkdown(structured);
+
+    expect(markdown).toContain("## Notes");
+    expect(validateGeneratedSolution("writing", markdown)).toBe(markdown);
+  });
+
+  it("renders meeting summaries without notes when omitted", () => {
     const structured = meetingSummaryStructuredSchema.parse({
       summary: ["The team reviewed the migration plan."],
       decisions: ["Keep the current API shape."],
@@ -264,13 +265,12 @@ describe("meeting summary rendering", () => {
       ],
       risks: [],
       openQuestions: ["Whether the cutoff date should move."],
-      notes: ["Transcript omitted the final owner confirmation."],
     });
 
     const markdown = renderMeetingSummaryMarkdown(structured);
 
     expect(markdown).toContain("## Summary");
-    expect(markdown).toContain("## Notes");
+    expect(markdown).not.toContain("## Notes");
     expect(markdown).toContain("- Draft the rollout checklist. (owner: Sam)");
     expect(validateGeneratedSolution("meeting_summary", markdown)).toBe(markdown);
   });
@@ -302,9 +302,6 @@ describe("session solution validation", () => {
           "",
           "## Draft",
           "<div>Bad HTML</div>",
-          "",
-          "## Notes",
-          "None.",
         ].join("\n"),
       ),
     ).toThrow("raw HTML");
@@ -327,7 +324,7 @@ describe("session solution validation", () => {
 });
 
 describe("session solution generation", () => {
-  it("returns provider metadata on successful markdown generation", async () => {
+  it("returns provider metadata and structured meta on successful coding generation", async () => {
     const result = await generateSessionSolution({
       session: createSession(),
       transcriptEvents: [createTranscriptEvent()],
@@ -338,13 +335,27 @@ describe("session solution generation", () => {
       format: "markdown",
       provider: "openrouter",
       model: "model-test",
-      promptVersion: "v3",
-      meta: null,
+      promptVersion: "v4",
+      meta: {
+        structured: {
+          type: "coding",
+        },
+      },
     });
     expect(result.content).toContain("## Understanding");
   });
 
   it("returns structured meta for successful meeting-summary generation", async () => {
+    serviceMockState.generateObjectImpl = async () => ({
+      object: {
+        summary: ["Generated summary."],
+        decisions: ["Keep the current API shape."],
+        actionItems: [],
+        risks: [],
+        openQuestions: [],
+      },
+    });
+
     const result = await generateSessionSolution({
       session: createSession({ type: "meeting_summary", language: null }),
       transcriptEvents: [createTranscriptEvent("Summarize the meeting.")],
@@ -355,18 +366,19 @@ describe("session solution generation", () => {
       format: "markdown",
       provider: "openrouter",
       model: "model-test",
-      promptVersion: "v3",
-    });
-    expect(result.meta).toMatchObject({
-      structured: {
-        type: "meeting_summary",
+      promptVersion: "v4",
+      meta: {
+        structured: {
+          type: "meeting_summary",
+        },
       },
     });
     expect(result.content).toContain("## Summary");
+    expect(result.content).not.toContain("## Notes");
   });
 
   it("attaches attempted provider metadata to service failures", async () => {
-    serviceMockState.generateTextImpl = async () => {
+    serviceMockState.generateObjectImpl = async () => {
       throw new Error("provider crashed");
     };
 
@@ -380,12 +392,12 @@ describe("session solution generation", () => {
       message: "provider crashed",
       provider: "openrouter",
       model: "model-test",
-      promptVersion: "v3",
+      promptVersion: "v4",
     });
   });
 
   it("attaches provider metadata to non-Error failures", async () => {
-    serviceMockState.generateTextImpl = async () => {
+    serviceMockState.generateObjectImpl = async () => {
       throw "provider exploded";
     };
 
@@ -399,7 +411,7 @@ describe("session solution generation", () => {
       message: "Unable to generate a solution.",
       provider: "openrouter",
       model: "model-test",
-      promptVersion: "v3",
+      promptVersion: "v4",
     });
   });
 });

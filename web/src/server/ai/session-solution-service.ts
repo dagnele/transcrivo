@@ -1,18 +1,26 @@
 import {
   generateObject,
-  generateText,
 } from "ai";
 
 import type { SessionType } from "@/lib/contracts/session";
+import type { SessionSolutionMetadata } from "@/lib/contracts/solution";
 import { createOpenRouterClient } from "@/server/ai/openrouter";
 import { buildSolutionPrompt } from "@/server/ai/session-solution/prompt";
-import { renderMeetingSummaryMarkdown } from "@/server/ai/session-solution/render";
 import {
+  renderCodingSolutionMarkdown,
+  renderMeetingSummaryMarkdown,
+  renderSystemDesignSolutionMarkdown,
+  renderWritingSolutionMarkdown,
+} from "@/server/ai/session-solution/render";
+import {
+  type CodingSolutionStructured,
   type GeneratedSolution,
-  meetingSummaryStructuredSchema,
+  getStructuredSolutionSchema,
   type MeetingSummaryStructured,
+  type SystemDesignSolutionStructured,
   type SolutionPrompt,
   solutionPromptVersion,
+  type WritingSolutionStructured,
 } from "@/server/ai/session-solution/schemas";
 import {
   buildTranscriptContext,
@@ -42,19 +50,50 @@ function toGenerationError(
   });
 }
 
-function buildStructuredMeetingSummaryMeta(summary: MeetingSummaryStructured) {
-  return {
-    structured: {
-      type: "meeting_summary",
-      data: summary,
-    },
-  } satisfies Record<string, unknown>;
+function buildStructuredSolutionMeta(
+  sessionType: SessionType,
+  data:
+    | CodingSolutionStructured
+    | SystemDesignSolutionStructured
+    | WritingSolutionStructured
+    | MeetingSummaryStructured,
+): SessionSolutionMetadata {
+  switch (sessionType) {
+    case "coding":
+      return {
+        structured: {
+          type: "coding",
+          data: data as CodingSolutionStructured,
+        },
+      };
+    case "system_design":
+      return {
+        structured: {
+          type: "system_design",
+          data: data as SystemDesignSolutionStructured,
+        },
+      };
+    case "writing":
+      return {
+        structured: {
+          type: "writing",
+          data: data as WritingSolutionStructured,
+        },
+      };
+    case "meeting_summary":
+      return {
+        structured: {
+          type: "meeting_summary",
+          data: data as MeetingSummaryStructured,
+        },
+      };
+  }
 }
 
 function buildSolutionResult(
   config: { provider: string; modelId: string },
   content: string,
-  meta: Record<string, unknown> | null,
+  meta: SessionSolutionMetadata,
 ): GeneratedSolution {
   return {
     content,
@@ -66,48 +105,55 @@ function buildSolutionResult(
   };
 }
 
-async function generateMeetingSummarySolution(
-  model: OpenRouterModel,
-  config: { provider: string; modelId: string },
-  prompt: SolutionPrompt,
-): Promise<GeneratedSolution> {
-  const { object } = await generateObject({
-    model,
-    schema: meetingSummaryStructuredSchema,
-    system: prompt.system,
-    prompt: prompt.prompt,
-    temperature: 0.2,
-    maxOutputTokens: 1600,
-  });
-
-  const structured = meetingSummaryStructuredSchema.parse(object);
-  const content = validateGeneratedSolution(
-    "meeting_summary",
-    renderMeetingSummaryMarkdown(structured),
-  );
-
-  return buildSolutionResult(
-    config,
-    content,
-    buildStructuredMeetingSummaryMeta(structured),
-  );
+function renderStructuredSolution(
+  sessionType: SessionType,
+  structured:
+    | CodingSolutionStructured
+    | SystemDesignSolutionStructured
+    | WritingSolutionStructured
+    | MeetingSummaryStructured,
+) {
+  switch (sessionType) {
+    case "coding":
+      return renderCodingSolutionMarkdown(structured as CodingSolutionStructured);
+    case "system_design":
+      return renderSystemDesignSolutionMarkdown(
+        structured as SystemDesignSolutionStructured,
+      );
+    case "writing":
+      return renderWritingSolutionMarkdown(structured as WritingSolutionStructured);
+    case "meeting_summary":
+      return renderMeetingSummaryMarkdown(structured as MeetingSummaryStructured);
+  }
 }
 
-async function generateMarkdownSolution(
+async function generateStructuredSolution(
   sessionType: SessionType,
   model: OpenRouterModel,
   config: { provider: string; modelId: string },
   prompt: SolutionPrompt,
 ): Promise<GeneratedSolution> {
-  const { text } = await generateText({
+  const schema = getStructuredSolutionSchema(sessionType);
+  const { object } = await generateObject({
     model,
+    schema,
     system: prompt.system,
     prompt: prompt.prompt,
     temperature: 0.2,
     maxOutputTokens: 1600,
   });
 
-  return buildSolutionResult(config, validateGeneratedSolution(sessionType, text), null);
+  const structured = schema.parse(object) as
+    | CodingSolutionStructured
+    | SystemDesignSolutionStructured
+    | WritingSolutionStructured
+    | MeetingSummaryStructured;
+  const content = validateGeneratedSolution(
+    sessionType,
+    renderStructuredSolution(sessionType, structured),
+  );
+
+  return buildSolutionResult(config, content, buildStructuredSolutionMeta(sessionType, structured));
 }
 
 export async function generateSessionSolution({
@@ -127,21 +173,26 @@ export async function generateSessionSolution({
       previousSolutionContent,
     });
 
-    if (prompt.outputMode === "meeting_summary_object") {
-      return await generateMeetingSummarySolution(model, config, prompt);
-    }
-
-    return await generateMarkdownSolution(session.type, model, config, prompt);
+    return await generateStructuredSolution(session.type, model, config, prompt);
   } catch (error) {
     throw toGenerationError(error, config);
   }
 }
 
 export { buildSolutionPrompt } from "@/server/ai/session-solution/prompt";
-export { renderMeetingSummaryMarkdown } from "@/server/ai/session-solution/render";
 export {
+  renderCodingSolutionMarkdown,
+  renderMeetingSummaryMarkdown,
+  renderSystemDesignSolutionMarkdown,
+  renderWritingSolutionMarkdown,
+} from "@/server/ai/session-solution/render";
+export {
+  codingSolutionStructuredSchema,
+  getStructuredSolutionSchema,
   meetingSummaryStructuredSchema,
   solutionPromptVersion,
+  systemDesignSolutionStructuredSchema,
+  writingSolutionStructuredSchema,
 } from "@/server/ai/session-solution/schemas";
 export {
   buildTranscriptContext,

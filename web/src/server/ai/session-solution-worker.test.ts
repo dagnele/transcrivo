@@ -1,6 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
-import type { SessionSolutionEvent } from "@/lib/contracts/solution";
+import type {
+  CodingSolutionStructured,
+  SessionSolutionEvent,
+  SessionSolutionMetadata,
+} from "@/lib/contracts/solution";
+
+function createStructuredCodingMeta(
+  overrides: Partial<CodingSolutionStructured> = {},
+): SessionSolutionMetadata {
+  return {
+    structured: {
+      type: "coding",
+      data: {
+        understanding: "Generated understanding.",
+        approach: "Generated approach.",
+        solution: "Generated solution.",
+        notes: "Generated notes.",
+        ...overrides,
+      },
+    },
+  };
+}
 
 type SessionRecord = {
   id: string;
@@ -35,7 +56,7 @@ type SessionSolutionRecord = {
   provider: string | null;
   model: string | null;
   promptVersion: string | null;
-  meta: Record<string, unknown> | null;
+  meta: SessionSolutionMetadata;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -83,7 +104,7 @@ let generateImpl: (input: GenerateInput) => Promise<{
   provider: string;
   model: string;
   promptVersion: string;
-  meta: Record<string, unknown> | null;
+  meta: SessionSolutionMetadata;
 }>;
 
 const dbMock = {
@@ -207,8 +228,13 @@ function createReadySolution(overrides: Partial<SessionSolutionRecord> = {}): Se
     errorMessage: null,
     provider: "openrouter",
     model: "model-a",
-    promptVersion: "v3",
-    meta: { prior: true },
+    promptVersion: "v4",
+    meta: createStructuredCodingMeta({
+      understanding: "Existing",
+      approach: "Existing",
+      solution: "Existing",
+      notes: "Existing",
+    }),
     createdAt: new Date("2026-04-03T10:00:00.000Z"),
     updatedAt: new Date("2026-04-03T10:00:00.000Z"),
     ...overrides,
@@ -316,8 +342,13 @@ beforeEach(() => {
     format: "markdown",
     provider: "openrouter",
     model: "model-a",
-    promptVersion: "v3",
-    meta: { generated: true },
+    promptVersion: "v4",
+    meta: createStructuredCodingMeta({
+      understanding: "New",
+      approach: "New",
+      solution: "New",
+      notes: "New",
+    }),
   });
 
   clearWorkerState();
@@ -395,7 +426,7 @@ describe("session solution worker generation", () => {
       provider: string;
       model: string;
       promptVersion: string;
-      meta: Record<string, unknown> | null;
+      meta: SessionSolutionMetadata;
     }>();
     let callCount = 0;
 
@@ -411,8 +442,13 @@ describe("session solution worker generation", () => {
         format: "markdown",
         provider: "openrouter",
         model: "model-a",
-        promptVersion: "v3",
-        meta: { generated: true },
+        promptVersion: "v4",
+        meta: createStructuredCodingMeta({
+          understanding: "Follow-up",
+          approach: "Follow-up",
+          solution: "Follow-up",
+          notes: "Follow-up",
+        }),
       };
     };
 
@@ -444,8 +480,13 @@ describe("session solution worker generation", () => {
       format: "markdown",
       provider: "openrouter",
       model: "model-a",
-      promptVersion: "v3",
-      meta: { generated: true },
+      promptVersion: "v4",
+      meta: createStructuredCodingMeta({
+        understanding: "Initial",
+        approach: "Initial",
+        solution: "Initial",
+        notes: "Initial",
+      }),
     });
     await flushAsyncWork();
 
@@ -505,7 +546,7 @@ describe("session solution worker generation", () => {
       provider: string;
       model: string;
       promptVersion: string;
-      meta: Record<string, unknown> | null;
+      meta: SessionSolutionMetadata;
     }>();
 
     generateImpl = () => deferred.promise;
@@ -525,8 +566,13 @@ describe("session solution worker generation", () => {
       format: "markdown",
       provider: "openrouter",
       model: "model-a",
-      promptVersion: "v3",
-      meta: { generated: true },
+      promptVersion: "v4",
+      meta: createStructuredCodingMeta({
+        understanding: "New",
+        approach: "New",
+        solution: "New",
+        notes: "New",
+      }),
     });
     await flushAsyncWork();
 
@@ -544,7 +590,7 @@ describe("session solution worker generation", () => {
       provider: string;
       model: string;
       promptVersion: string;
-      meta: Record<string, unknown> | null;
+      meta: SessionSolutionMetadata;
     }>();
 
     generateImpl = () => deferred.promise;
@@ -564,8 +610,13 @@ describe("session solution worker generation", () => {
       format: "markdown",
       provider: "openrouter",
       model: "model-a",
-      promptVersion: "v3",
-      meta: { generated: true },
+      promptVersion: "v4",
+      meta: createStructuredCodingMeta({
+        understanding: "New",
+        approach: "New",
+        solution: "New",
+        notes: "New",
+      }),
     });
     await flushAsyncWork();
     await advanceBy(10_000);
@@ -603,7 +654,7 @@ describe("session solution worker generation", () => {
       throw Object.assign(new Error("provider failed"), {
         provider: "openrouter",
         model: "model-c",
-        promptVersion: "v3",
+        promptVersion: "v4",
       });
     };
 
@@ -620,7 +671,7 @@ describe("session solution worker generation", () => {
       content: "",
       provider: "openrouter",
       model: "model-c",
-      promptVersion: "v3",
+      promptVersion: "v4",
       meta: null,
     });
   });
@@ -632,7 +683,7 @@ describe("session solution worker generation", () => {
       provider: string;
       model: string;
       promptVersion: string;
-      meta: Record<string, unknown> | null;
+      meta: SessionSolutionMetadata;
     }>();
     let callCount = 0;
 
@@ -648,8 +699,13 @@ describe("session solution worker generation", () => {
         format: "markdown",
         provider: "openrouter",
         model: "model-a",
-        promptVersion: "v3",
-        meta: { generated: true },
+        promptVersion: "v4",
+        meta: createStructuredCodingMeta({
+          understanding: "Final",
+          approach: "Final",
+          solution: "Final",
+          notes: "Final",
+        }),
       };
     };
 
@@ -682,8 +738,13 @@ describe("session solution worker generation", () => {
       format: "markdown",
       provider: "openrouter",
       model: "model-a",
-      promptVersion: "v3",
-      meta: { generated: true },
+      promptVersion: "v4",
+      meta: createStructuredCodingMeta({
+        understanding: "Initial",
+        approach: "Initial",
+        solution: "Initial",
+        notes: "Initial",
+      }),
     });
     await flushAsyncWork();
     await advanceBy(5_000);
@@ -720,7 +781,7 @@ describe("session solution worker generation", () => {
       throw Object.assign(new Error("provider failed"), {
         provider: "openrouter",
         model: "model-b",
-        promptVersion: "v3",
+        promptVersion: "v4",
       });
     };
 
@@ -731,7 +792,12 @@ describe("session solution worker generation", () => {
       provider: "openrouter",
       model: "old-model",
       promptVersion: "v2",
-      meta: { stale: true },
+      meta: createStructuredCodingMeta({
+        understanding: "Stale",
+        approach: "Stale",
+        solution: "Stale",
+        notes: "Stale",
+      }),
     });
 
     sessionFindFirstQueue.push(createSessionRecord());
@@ -747,7 +813,7 @@ describe("session solution worker generation", () => {
       content: "last ready content",
       provider: "openrouter",
       model: "model-b",
-      promptVersion: "v3",
+      promptVersion: "v4",
       meta: null,
       version: 3,
       sourceEventSequence: 4,
