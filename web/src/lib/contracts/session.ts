@@ -14,7 +14,8 @@ export const sessionTypeValues = [
   "coding",
   "system_design",
   "writing",
-  "meeting_summary",
+  "meeting",
+  "brainstorm",
 ] as const;
 
 export const sessionLanguageValues = [

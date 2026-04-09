@@ -10,7 +10,8 @@ export const sessionTypeOptions: ReadonlyArray<{
   { value: "coding", label: "Coding" },
   { value: "system_design", label: "System design" },
   { value: "writing", label: "Writing" },
-  { value: "meeting_summary", label: "Meeting summary" },
+  { value: "meeting", label: "Meeting" },
+  { value: "brainstorm", label: "Brainstorm" },
 ];
 
 export const sessionLanguageOptions: ReadonlyArray<{
@@ -50,7 +51,8 @@ const solutionPaneLabels: Record<SessionType, string> = {
   coding: "Solution",
   system_design: "Design",
   writing: "Draft",
-  meeting_summary: "Summary",
+  meeting: "Summary",
+  brainstorm: "Ideas",
 };
 
 export function getSolutionPaneLabel(type: SessionType): string {

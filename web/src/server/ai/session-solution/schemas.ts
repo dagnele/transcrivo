@@ -1,12 +1,14 @@
 import type { SessionType } from "@/lib/contracts/session";
 import {
+  brainstormStructuredSchema,
   codingSolutionStructuredSchema,
-  meetingSummaryStructuredSchema,
+  meetingStructuredSchema,
   sessionSolutionMetadataSchema,
   systemDesignSolutionStructuredSchema,
   writingSolutionStructuredSchema,
+  type BrainstormStructured,
   type CodingSolutionStructured,
-  type MeetingSummaryStructured,
+  type MeetingStructured,
   type SessionSolutionMetadata,
   type SystemDesignSolutionStructured,
   type WritingSolutionStructured,
@@ -22,8 +24,10 @@ export function getStructuredSolutionSchema(sessionType: SessionType) {
       return systemDesignSolutionStructuredSchema;
     case "writing":
       return writingSolutionStructuredSchema;
-    case "meeting_summary":
-      return meetingSummaryStructuredSchema;
+    case "meeting":
+      return meetingStructuredSchema;
+    case "brainstorm":
+      return brainstormStructuredSchema;
   }
 }
 
@@ -48,13 +52,15 @@ export type SessionConstraintInstructions = {
 };
 
 export {
+  brainstormStructuredSchema,
   codingSolutionStructuredSchema,
-  meetingSummaryStructuredSchema,
+  meetingStructuredSchema,
   sessionSolutionMetadataSchema,
   systemDesignSolutionStructuredSchema,
   writingSolutionStructuredSchema,
+  type BrainstormStructured,
   type CodingSolutionStructured,
-  type MeetingSummaryStructured,
+  type MeetingStructured,
   type SessionSolutionMetadata,
   type SystemDesignSolutionStructured,
   type WritingSolutionStructured,

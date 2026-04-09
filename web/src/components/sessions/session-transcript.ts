@@ -117,7 +117,7 @@ export function mergeTranscriptWindows(
 
 function getSystemSpeakerLabel(sessionType: SessionType) {
   if (sessionType === "writing") return "Reference";
-  if (sessionType === "meeting_summary") return "Participant";
+  if (sessionType === "meeting" || sessionType === "brainstorm") return "Participant";
   return "Interviewer";
 }
 

@@ -7,16 +7,18 @@ import type { SessionSolutionMetadata } from "@/lib/contracts/solution";
 import { createOpenRouterClient } from "@/server/ai/openrouter";
 import { buildSolutionPrompt } from "@/server/ai/session-solution/prompt";
 import {
+  renderBrainstormMarkdown,
   renderCodingSolutionMarkdown,
-  renderMeetingSummaryMarkdown,
+  renderMeetingMarkdown,
   renderSystemDesignSolutionMarkdown,
   renderWritingSolutionMarkdown,
 } from "@/server/ai/session-solution/render";
 import {
+  type BrainstormStructured,
   type CodingSolutionStructured,
   type GeneratedSolution,
   getStructuredSolutionSchema,
-  type MeetingSummaryStructured,
+  type MeetingStructured,
   type SystemDesignSolutionStructured,
   type SolutionPrompt,
   solutionPromptVersion,
@@ -53,10 +55,11 @@ function toGenerationError(
 function buildStructuredSolutionMeta(
   sessionType: SessionType,
   data:
+    | BrainstormStructured
     | CodingSolutionStructured
     | SystemDesignSolutionStructured
     | WritingSolutionStructured
-    | MeetingSummaryStructured,
+    | MeetingStructured,
 ): SessionSolutionMetadata {
   switch (sessionType) {
     case "coding":
@@ -80,11 +83,18 @@ function buildStructuredSolutionMeta(
           data: data as WritingSolutionStructured,
         },
       };
-    case "meeting_summary":
+    case "meeting":
       return {
         structured: {
-          type: "meeting_summary",
-          data: data as MeetingSummaryStructured,
+          type: "meeting",
+          data: data as MeetingStructured,
+        },
+      };
+    case "brainstorm":
+      return {
+        structured: {
+          type: "brainstorm",
+          data: data as BrainstormStructured,
         },
       };
   }
@@ -108,10 +118,11 @@ function buildSolutionResult(
 function renderStructuredSolution(
   sessionType: SessionType,
   structured:
+    | BrainstormStructured
     | CodingSolutionStructured
     | SystemDesignSolutionStructured
     | WritingSolutionStructured
-    | MeetingSummaryStructured,
+    | MeetingStructured,
 ) {
   switch (sessionType) {
     case "coding":
@@ -122,8 +133,10 @@ function renderStructuredSolution(
       );
     case "writing":
       return renderWritingSolutionMarkdown(structured as WritingSolutionStructured);
-    case "meeting_summary":
-      return renderMeetingSummaryMarkdown(structured as MeetingSummaryStructured);
+    case "meeting":
+      return renderMeetingMarkdown(structured as MeetingStructured);
+    case "brainstorm":
+      return renderBrainstormMarkdown(structured as BrainstormStructured);
   }
 }
 
@@ -144,10 +157,11 @@ async function generateStructuredSolution(
   });
 
   const structured = schema.parse(object) as
+    | BrainstormStructured
     | CodingSolutionStructured
     | SystemDesignSolutionStructured
     | WritingSolutionStructured
-    | MeetingSummaryStructured;
+    | MeetingStructured;
   const content = validateGeneratedSolution(
     sessionType,
     renderStructuredSolution(sessionType, structured),
@@ -181,15 +195,17 @@ export async function generateSessionSolution({
 
 export { buildSolutionPrompt } from "@/server/ai/session-solution/prompt";
 export {
+  renderBrainstormMarkdown,
   renderCodingSolutionMarkdown,
-  renderMeetingSummaryMarkdown,
+  renderMeetingMarkdown,
   renderSystemDesignSolutionMarkdown,
   renderWritingSolutionMarkdown,
 } from "@/server/ai/session-solution/render";
 export {
+  brainstormStructuredSchema,
   codingSolutionStructuredSchema,
   getStructuredSolutionSchema,
-  meetingSummaryStructuredSchema,
+  meetingStructuredSchema,
   solutionPromptVersion,
   systemDesignSolutionStructuredSchema,
   writingSolutionStructuredSchema,

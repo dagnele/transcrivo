@@ -4,13 +4,14 @@ const requiredMarkdownSections: Record<SessionType, readonly string[]> = {
   coding: ["Understanding", "Approach", "Solution"],
   system_design: ["Understanding", "Approach", "Solution"],
   writing: ["Intent", "Draft"],
-  meeting_summary: [
+  meeting: [
     "Summary",
     "Decisions",
     "Action Items",
     "Risks / Blockers",
     "Open Questions",
   ],
+  brainstorm: ["Goal", "Ideas", "Recommended Direction", "Next Steps"],
 };
 
 function escapeRegExp(value: string) {

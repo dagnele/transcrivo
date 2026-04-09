@@ -84,7 +84,7 @@ function getSpeakerLabelForExport(source: string, sessionType: string): string {
   if (source === "mic") return "You";
   if (source === "system") {
     if (sessionType === "writing") return "Reference";
-    if (sessionType === "meeting_summary") return "Participant";
+    if (sessionType === "meeting" || sessionType === "brainstorm") return "Participant";
     return "Interviewer";
   }
   return source;

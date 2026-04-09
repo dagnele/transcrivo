@@ -1,6 +1,7 @@
 import type {
+  BrainstormStructured,
   CodingSolutionStructured,
-  MeetingSummaryStructured,
+  MeetingStructured,
   SystemDesignSolutionStructured,
   WritingSolutionStructured,
 } from "@/server/ai/session-solution/schemas";
@@ -13,14 +14,14 @@ function renderBulletSection(title: string, items: readonly string[]) {
   return [`## ${title}`, ...items.map((item) => `- ${item}`)].join("\n");
 }
 
-function renderMeetingActionItems(items: MeetingSummaryStructured["actionItems"]) {
+function renderMeetingActionItems(items: MeetingStructured["actionItems"]) {
   if (items.length === 0) {
     return ["## Action Items", "None captured."].join("\n");
   }
 
   return [
     "## Action Items",
-    ...items.map((item: MeetingSummaryStructured["actionItems"][number]) => {
+    ...items.map((item: MeetingStructured["actionItems"][number]) => {
       const qualifiers = [
         item.owner ? `owner: ${item.owner}` : null,
         item.deadline ? `deadline: ${item.deadline}` : null,
@@ -88,19 +89,35 @@ export function renderWritingSolutionMarkdown(solution: WritingSolutionStructure
     .join("\n");
 }
 
-export function renderMeetingSummaryMarkdown(summary: MeetingSummaryStructured) {
+export function renderMeetingMarkdown(meeting: MeetingStructured) {
   return [
-    renderBulletSection("Summary", summary.summary),
+    renderBulletSection("Summary", meeting.summary),
     "",
-    renderBulletSection("Decisions", summary.decisions),
+    renderBulletSection("Decisions", meeting.decisions),
     "",
-    renderMeetingActionItems(summary.actionItems),
+    renderMeetingActionItems(meeting.actionItems),
     "",
-    renderBulletSection("Risks / Blockers", summary.risks),
+    renderBulletSection("Risks / Blockers", meeting.risks),
     "",
-    renderBulletSection("Open Questions", summary.openQuestions),
-    summary.notes.length > 0 ? "" : null,
-    summary.notes.length > 0 ? renderBulletSection("Notes", summary.notes) : null,
+    renderBulletSection("Open Questions", meeting.openQuestions),
+    meeting.notes.length > 0 ? "" : null,
+    meeting.notes.length > 0 ? renderBulletSection("Notes", meeting.notes) : null,
+  ]
+    .filter((section): section is string => section !== null)
+    .join("\n");
+}
+
+export function renderBrainstormMarkdown(brainstorm: BrainstormStructured) {
+  return [
+    renderTextSection("Goal", brainstorm.goal),
+    "",
+    renderBulletSection("Ideas", brainstorm.ideas),
+    "",
+    renderTextSection("Recommended Direction", brainstorm.recommendedDirection),
+    "",
+    renderBulletSection("Next Steps", brainstorm.nextSteps),
+    brainstorm.notes.length > 0 ? "" : null,
+    brainstorm.notes.length > 0 ? renderBulletSection("Notes", brainstorm.notes) : null,
   ]
     .filter((section): section is string => section !== null)
     .join("\n");

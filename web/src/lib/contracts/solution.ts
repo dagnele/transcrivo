@@ -18,7 +18,7 @@ export const sessionSolutionIdSchema = z.string().trim().min(1).max(128);
 const requiredMarkdownFieldSchema = z.string().trim().min(1).max(8_000);
 const optionalMarkdownFieldSchema = z.string().trim().max(2_000).optional().default("");
 
-const meetingSummaryActionItemSchema = z.object({
+const meetingActionItemSchema = z.object({
   task: z.string().trim().min(1).max(500),
   owner: z.string().trim().min(1).max(200).nullable(),
   deadline: z.string().trim().min(1).max(200).nullable(),
@@ -44,12 +44,20 @@ export const writingSolutionStructuredSchema = z.object({
   notes: optionalMarkdownFieldSchema,
 });
 
-export const meetingSummaryStructuredSchema = z.object({
+export const meetingStructuredSchema = z.object({
   summary: z.array(z.string().trim().min(1).max(500)).max(12),
   decisions: z.array(z.string().trim().min(1).max(500)).max(12),
-  actionItems: z.array(meetingSummaryActionItemSchema).max(12),
+  actionItems: z.array(meetingActionItemSchema).max(12),
   risks: z.array(z.string().trim().min(1).max(500)).max(12),
   openQuestions: z.array(z.string().trim().min(1).max(500)).max(12),
+  notes: z.array(z.string().trim().min(1).max(500)).max(8).optional().default([]),
+});
+
+export const brainstormStructuredSchema = z.object({
+  goal: requiredMarkdownFieldSchema,
+  ideas: z.array(z.string().trim().min(1).max(500)).max(12),
+  recommendedDirection: requiredMarkdownFieldSchema,
+  nextSteps: z.array(z.string().trim().min(1).max(500)).max(12),
   notes: z.array(z.string().trim().min(1).max(500)).max(8).optional().default([]),
 });
 
@@ -67,8 +75,12 @@ export const structuredSolutionMetadataSchema = z.discriminatedUnion("type", [
     data: writingSolutionStructuredSchema,
   }),
   z.object({
-    type: z.literal("meeting_summary"),
-    data: meetingSummaryStructuredSchema,
+    type: z.literal("meeting"),
+    data: meetingStructuredSchema,
+  }),
+  z.object({
+    type: z.literal("brainstorm"),
+    data: brainstormStructuredSchema,
   }),
 ]);
 
@@ -170,7 +182,8 @@ export type SystemDesignSolutionStructured = z.infer<
   typeof systemDesignSolutionStructuredSchema
 >;
 export type WritingSolutionStructured = z.infer<typeof writingSolutionStructuredSchema>;
-export type MeetingSummaryStructured = z.infer<typeof meetingSummaryStructuredSchema>;
+export type MeetingStructured = z.infer<typeof meetingStructuredSchema>;
+export type BrainstormStructured = z.infer<typeof brainstormStructuredSchema>;
 export type StructuredSolutionMetadata = z.infer<typeof structuredSolutionMetadataSchema>;
 export type SessionSolutionMetadata = z.infer<typeof sessionSolutionMetadataSchema>;
 export type SessionSolution = z.infer<typeof sessionSolutionSchema>;
